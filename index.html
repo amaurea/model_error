@@ -1,0 +1,391 @@
+<html>
+	<head>
+		<title>How to avoid X'es around point sources in maximum likelihood CMB maps</title>
+		<script type="text/x-mathjax-config">
+			MathJax.Hub.Config({
+			extensions: ["tex2jax.js"],
+			jax: ["input/TeX", "output/HTML-CSS"],
+			tex2jax: {inlineMath: [["$","$"],["\\(","\\)"]]}
+		});
+		</script>
+		<script type="text/javascript" src="http://folk.uio.no/sigurdkn/mathjax/MathJax.js"></script>
+		<style>
+			body { max-width: 1200px; margin-left: auto; margin-right: auto; padding-left: 1em; padding-right: 1em; }
+			img  { width: 100%; }
+			figure { display: block;  margin-left: auto; margin-right: auto; width: 100%; max-width: 40em; border: dashed black 1px; margin: 0.5em; }
+			figure.wide { max-width: 75em; }
+			table  { table-layout: fixed; width: 100%; }
+			table.pix img { image-rendering: optimizeSpeed; }
+			h1, h2, h3 { text-align: center; }
+			p, figcaption { text-align: justify; margin: 0.5em; }
+			tr.sub th { font-size: 70%; }
+			dfn { font-weight: bold; }
+		</style>
+	</head>
+	<body>
+		<h1>How to avoid X'es around point sources in maximum likelihood CMB maps</h1>
+
+		<h2>Introduction</h2>
+		<p>CMB telescopes map the sky by scanning an array of detectors repeatedly across
+		the sky, resulting in a time-series of samples $d$. This process is usually
+		modeled via the linear equation</p>
+		\begin{align}
+		d &= Pm + n \label{eq:model} \tag{1}
+		\end{align}
+		<p>where $d$ is the vector of samples,
+		$m$ is a vector representing the pixels of the sky we are trying to reconstruct, and
+		$P$ is a response matrix that encodes where the telescope was pointing on the sky
+		when each sample was taken and how it responded to that. $n$ represents the
+		noise contribution to each sample, and is usually taken to be normal distributed
+		with some covariance $N$. The maximum likelihood solution to this equation is</p>
+		\begin{align}
+		\hat m &= (P^T N^{-1} P)^{-1} P^T N^{-1} d \label{eq:mapmaking} \tag{2}
+		\end{align}
+		<p>and it's simple to see that this solution is unbiased by inserting our model for $d$:</p>
+		\begin{align}
+		\langle \hat m \rangle &= (P^T N^{-1} P)^{-1}P^T N^{-1}(Pm + \overbrace{\langle n \rangle}^{0}) = m
+		\end{align}
+		<p>Given this result it might be surprising to hear that bias in maximum-likelihood maps
+		made using eq. \ref{eq:mapmaking} is actually quite common, with the archetypical example
+		being lines extending away from bright point sources in the map, often in the shape of an X
+		(but this depends on the telescope's scanning pattern). The source of this bias is <em>model
+			error</em>: the failure of eq. \ref{eq:mapmaking} to accurately describe the real data; and
+		in this paper I will describe the main types of model error in maximum-likelihood mapmaking, simulate their
+		effect and investigate several methods for mitigating or eliminating them.</p>
+
+		<h2>Aliasing of sub-pixel structure</h2>
+		<p>The most obvious problem with eq. \ref{eq:model} is that it models the sky as a
+		finite vector of pixels, which will leave out any signal on scales smaller than the
+		pixel spacing. This is exacerbated by the canonical choice of a nearest-neighbor response
+		model in $P$, which means that the value of each sample is simply given by that of the
+		closest pixel to it, regardless of how far away from the pixel center it is. The resulting
+		model error is illustrated in figure 1.
+		</p>
+		<figure class=wide>
+			<table>
+				<tr><th>uncorrelated</th><th>correlated</th></tr>
+				<tr>
+					<td><img src=example_1d_uncorr_log.svg></td>
+					<td><img src=example_1d_corr_log.svg></td>
+				</tr>
+			</table>
+			<figcaption>
+				<dfn>Figure 1</dfn>: A simulated data vector consisting of a noiseless scan through a smooth, gaussian profile,
+				compared to its nearest-neighbor-pixellated maximum likelihood
+				model. <dfn>Left</dfn>: When an uncorrelated noise model is used ($N \propto I$)
+				the residual is large but stay in the pixel where they were sourced. This error can
+				be characterized as a simple pixel window. <dfn>Right</dfn>: When a correlated noise
+				model is used the residuals are still large, but are now spread out over a larger area
+				than the signal that sourced them.
+			</figcaption>
+		</figure>
+		<p>Nearest-neighbor pixelization results in a model that looks like a series of step functions,
+		which clearly cannot match the smooth behavior of the beam-convolved sky. The only term in
+		eq. \ref{eq:model} that can absorb such a mismatch is the noise $n$, and so how this model
+		error manifests is determined by our noise model $N$.</p>
+		<p>If $N$ is assumed to be uncorrelated ($N \propto I$), then a high value of the residual
+		(honorary noise as far as our data model is concerned) in one sample does not tell us
+		anything about what the noise is doing in any other samples, and so the residual
+		just stays in the pixel that birthed it. The value in each pixel is therefore just
+		the mean of the samples that hit it (left panel of figure 1).
+		This is approximately
+		the mean value of the signal inside the area covered by the pixel, which is a straightforward
+		and useful thing to measure, and is not the sort of bias we are worried about here.</p>
+		<p>If, on the other hand, $N$ is assumed to be correlated, then the presence of high
+		"noise" (actually residual) in some samples
+		will make it more likely that other samples within a noise correlation length will
+		have a similar value for the noise. For long correlation lengths this could affect samples
+		many pixels away from the source of the residual. This is illustrated in the right panel
+		of figure 1. Here large sub-pixel residuals in the center result in a non-zero expectation
+		value for the noise at large distances. Given that the data has negligibly small values
+		there, the best fit model must cancel the expected noise, resulting in a non-zero model
+		extending far beyond the area with significant signal.</p>
+
+		<h3>Higher-order mapmaking</h3>
+		<p>Since the largest source of sub-pixel bias is the use of nearest-neighbor interpolation in
+		the response matrix $P$, the obvious next step is to use a smoother interpolation function,
+		such as the popular bilinear and bicubic spline interpolations.</p>
+
+		<figure class=wide>
+			<table class=pix>
+				<tr>
+					<th></th>
+					<th>standard</th>
+					<th>standard</th>
+					<th>it.lin</th>
+					<th>it.cubic</th>
+					<th>bilin</th>
+					<th>bicubic</th>
+					<th>srcwhite</th>
+					<th>srcsamp</th>
+				</tr>
+				<tr class=sub>
+					<th></th>
+					<th>uncorr</th>
+					<th>corr</th>
+					<th>corr</th>
+					<th>corr</th>
+					<th>corr</th>
+					<th>corr</th>
+					<th>corr</th>
+					<th>corr</th>
+				</tr>
+				<tr>
+					<th>plain</th>
+					<td><img src=examples/src_2d_uncorr_map_0.png></td>
+					<td><img src=examples/src_2d_corr_map_0.png></td>
+					<td><img src=examples/src_2d_corr_itlin_map_0.png></td>
+					<td><img src=examples/src_2d_corr_itcubic_map_0.png></td>
+					<td><img src=examples/src_2d_corr_lin_map_0.png></td>
+					<td><img src=examples/src_2d_corr_cubic_map_0.png></td>
+					<td><img src=examples/src_2d_corr_srcwhite_map_0.png></td>
+					<td><img src=examples/src_2d_corr_srcsamp_map_0.png></td>
+				</tr>
+				<tr>
+					<th>gain error</th>
+					<td><img src=examples/src_gain_2d_uncorr_map_0.png></td>
+					<td><img src=examples/src_gain_2d_corr_map_0.png></td>
+					<td><img src=examples/src_gain_2d_corr_itlin_map_0.png></td>
+					<td><img src=examples/src_gain_2d_corr_itcubic_map_0.png></td>
+					<td><img src=examples/src_gain_2d_corr_lin_map_0.png></td>
+					<td><img src=examples/src_gain_2d_corr_cubic_map_0.png></td>
+					<td><img src=examples/src_gain_2d_corr_srcwhite_map_0.png></td>
+					<td><img src=examples/src_gain_2d_corr_srcsamp_map_0.png></td>
+				</tr>
+				<tr>
+					<th>pt. error</th>
+					<td><img src=examples/src_ptoff_2d_uncorr_map_0.png></td>
+					<td><img src=examples/src_ptoff_2d_corr_map_0.png></td>
+					<td><img src=examples/src_ptoff_2d_corr_itlin_map_0.png></td>
+					<td><img src=examples/src_ptoff_2d_corr_itcubic_map_0.png></td>
+					<td><img src=examples/src_ptoff_2d_corr_lin_map_0.png></td>
+					<td><img src=examples/src_ptoff_2d_corr_cubic_map_0.png></td>
+					<td><img src=examples/src_ptoff_2d_corr_srcwhite_map_0.png></td>
+					<td><img src=examples/src_ptoff_2d_corr_srcsamp_map_0.png></td>
+				</tr>
+				<tr>
+					<th>plain + noise</th>
+					<td><img src=examples/src_noise_2d_uncorr_map_0.png></td>
+					<td><img src=examples/src_noise_2d_corr_map_0.png></td>
+					<td><img src=examples/src_noise_2d_corr_itlin_map_0.png></td>
+					<td><img src=examples/src_noise_2d_corr_itcubic_map_0.png></td>
+					<td><img src=examples/src_noise_2d_corr_lin_map_0.png></td>
+					<td><img src=examples/src_noise_2d_corr_cubic_map_0.png></td>
+					<td><img src=examples/src_noise_2d_corr_srcwhite_map_0.png></td>
+					<td><img src=examples/src_noise_2d_corr_srcsamp_map_0.png></td>
+				</tr>
+				<tr>
+					<th>gain error + noise</th>
+					<td><img src=examples/src_noise_gain_2d_uncorr_map_0.png></td>
+					<td><img src=examples/src_noise_gain_2d_corr_map_0.png></td>
+					<td><img src=examples/src_noise_gain_2d_corr_itlin_map_0.png></td>
+					<td><img src=examples/src_noise_gain_2d_corr_itcubic_map_0.png></td>
+					<td><img src=examples/src_noise_gain_2d_corr_lin_map_0.png></td>
+					<td><img src=examples/src_noise_gain_2d_corr_cubic_map_0.png></td>
+					<td><img src=examples/src_noise_gain_2d_corr_srcwhite_map_0.png></td>
+					<td><img src=examples/src_noise_gain_2d_corr_srcsamp_map_0.png></td>
+				</tr>
+				<tr>
+					<th>pt. error + noise</th>
+					<td><img src=examples/src_noise_ptoff_2d_uncorr_map_0.png></td>
+					<td><img src=examples/src_noise_ptoff_2d_corr_map_0.png></td>
+					<td><img src=examples/src_noise_ptoff_2d_corr_itlin_map_0.png></td>
+					<td><img src=examples/src_noise_ptoff_2d_corr_itcubic_map_0.png></td>
+					<td><img src=examples/src_noise_ptoff_2d_corr_lin_map_0.png></td>
+					<td><img src=examples/src_noise_ptoff_2d_corr_cubic_map_0.png></td>
+					<td><img src=examples/src_noise_ptoff_2d_corr_srcwhite_map_0.png></td>
+					<td><img src=examples/src_noise_ptoff_2d_corr_srcsamp_map_0.png></td>
+				</tr>
+			</table>
+			<figcaption>
+				<p><dfn>Figure 2</dfn>: Model errors around a bright point source for the
+				different methods discussed in this paper, for a simulation with 3x3
+				samples uniformly distributed inside each pixel for each of a vertical and
+				horizontal scanning pattern. The top half is for a noise free
+				simulation, while the bottom half includes strongly correlated noise.
+				The rows are: <dfn>plain</dfn>: no special conditions; <dfn>gain error</dfn>:
+				the vertical scanning pattern sees a 1% higher signal than the horizontal
+				scanning pattern; and <dfn>pt. error</dfn>: the horizontal scanning pattern
+				sees the signal offset by 0.01 pixel diagonally. The column headers refer to
+				the different mapmaking algorithms described in the text. The subheaders
+				indicate whether a correlated or uncorrelated noise model was used. The
+				color range is &pm;$10^{-4}$ of the peak source amplitude.</p>
+				<!--<p>Standard nearest neighbor mapmaking results in a prominent X-shaped
+				subpixel errors
+				following the scanning directions as soon as we turn on correlations in the
+				noise model. With the exception of the bicubic method, the position-independent
+				methods only modestly reduce these errors. Bicubic mapmaking greatly reduces
+				the long-distance errors, but introduces some short-distance ringing as the
+				spline sacrifices fidelity at the edge of the source to match the strong signal
+				at its center as closely as possible. None of these position-independent methods
+				help noticeably against non-local bias from gain and pointing errors.</p>-->
+			</figcaption>
+		</figure>
+
+		<figure class=wide>
+			<table class=pix>
+				<tr>
+					<th></th>
+					<th>standard</th>
+					<th>standard</th>
+					<th>it.lin</th>
+					<th>it.cubic</th>
+					<th>bilin</th>
+					<th>bicubic</th>
+					<th>srcwhite</th>
+					<th>srcsamp</th>
+				</tr>
+				<tr class=sub>
+					<th></th>
+					<th>uncorr</th>
+					<th>corr</th>
+					<th>corr</th>
+					<th>corr</th>
+					<th>corr</th>
+					<th>corr</th>
+					<th>corr</th>
+					<th>corr</th>
+				</tr>
+				<tr>
+					<th>plain</th>
+					<td><img src=examples/cmb_2d_uncorr_map_0.png></td>
+					<td><img src=examples/cmb_2d_corr_map_0.png></td>
+					<td><img src=examples/cmb_2d_corr_itlin_map_0.png></td>
+					<td><img src=examples/cmb_2d_corr_itcubic_map_0.png></td>
+					<td><img src=examples/cmb_2d_corr_lin_map_0.png></td>
+					<td><img src=examples/cmb_2d_corr_cubic_map_0.png></td>
+					<td><img src=examples/cmb_2d_corr_srcwhite_map_0.png></td>
+					<td><img src=examples/cmb_2d_corr_srcsamp_map_0.png></td>
+				</tr>
+				<tr>
+					<th>gain error</th>
+					<td><img src=examples/cmb_gain_2d_uncorr_map_0.png></td>
+					<td><img src=examples/cmb_gain_2d_corr_map_0.png></td>
+					<td><img src=examples/cmb_gain_2d_corr_itlin_map_0.png></td>
+					<td><img src=examples/cmb_gain_2d_corr_itcubic_map_0.png></td>
+					<td><img src=examples/cmb_gain_2d_corr_lin_map_0.png></td>
+					<td><img src=examples/cmb_gain_2d_corr_cubic_map_0.png></td>
+					<td><img src=examples/cmb_gain_2d_corr_srcwhite_map_0.png></td>
+					<td><img src=examples/cmb_gain_2d_corr_srcsamp_map_0.png></td>
+				</tr>
+				<tr>
+					<th>pt. error</th>
+					<td><img src=examples/cmb_ptoff_2d_uncorr_map_0.png></td>
+					<td><img src=examples/cmb_ptoff_2d_corr_map_0.png></td>
+					<td><img src=examples/cmb_ptoff_2d_corr_itlin_map_0.png></td>
+					<td><img src=examples/cmb_ptoff_2d_corr_itcubic_map_0.png></td>
+					<td><img src=examples/cmb_ptoff_2d_corr_lin_map_0.png></td>
+					<td><img src=examples/cmb_ptoff_2d_corr_cubic_map_0.png></td>
+					<td><img src=examples/cmb_ptoff_2d_corr_srcwhite_map_0.png></td>
+					<td><img src=examples/cmb_ptoff_2d_corr_srcsamp_map_0.png></td>
+				</tr>
+				<tr>
+					<th>plain resid</th>
+					<td><img src=examples/cmb_2d_uncorr_map_1.png></td>
+					<td><img src=examples/cmb_2d_corr_map_1.png></td>
+					<td><img src=examples/cmb_2d_corr_itlin_map_1.png></td>
+					<td><img src=examples/cmb_2d_corr_itcubic_map_1.png></td>
+					<td><img src=examples/cmb_2d_corr_lin_map_1.png></td>
+					<td><img src=examples/cmb_2d_corr_cubic_map_1.png></td>
+					<td><img src=examples/cmb_2d_corr_srcwhite_map_1.png></td>
+					<td><img src=examples/cmb_2d_corr_srcsamp_map_1.png></td>
+				</tr>
+				<tr>
+					<th>gain error resid</th>
+					<td><img src=examples/cmb_gain_2d_uncorr_map_1.png></td>
+					<td><img src=examples/cmb_gain_2d_corr_map_1.png></td>
+					<td><img src=examples/cmb_gain_2d_corr_itlin_map_1.png></td>
+					<td><img src=examples/cmb_gain_2d_corr_itcubic_map_1.png></td>
+					<td><img src=examples/cmb_gain_2d_corr_lin_map_1.png></td>
+					<td><img src=examples/cmb_gain_2d_corr_cubic_map_1.png></td>
+					<td><img src=examples/cmb_gain_2d_corr_srcwhite_map_1.png></td>
+					<td><img src=examples/cmb_gain_2d_corr_srcsamp_map_1.png></td>
+				</tr>
+				<tr>
+					<th>pt. error resid</th>
+					<td><img src=examples/cmb_ptoff_2d_uncorr_map_1.png></td>
+					<td><img src=examples/cmb_ptoff_2d_corr_map_1.png></td>
+					<td><img src=examples/cmb_ptoff_2d_corr_itlin_map_1.png></td>
+					<td><img src=examples/cmb_ptoff_2d_corr_itcubic_map_1.png></td>
+					<td><img src=examples/cmb_ptoff_2d_corr_lin_map_1.png></td>
+					<td><img src=examples/cmb_ptoff_2d_corr_cubic_map_1.png></td>
+					<td><img src=examples/cmb_ptoff_2d_corr_srcwhite_map_1.png></td>
+					<td><img src=examples/cmb_ptoff_2d_corr_srcsamp_map_1.png></td>
+				</tr>
+				<tr>
+					<th>plain wdiff</th>
+					<td><img src=examples/cmb_2d_uncorr_map_2.png></td>
+					<td><img src=examples/cmb_2d_corr_map_2.png></td>
+					<td><img src=examples/cmb_2d_corr_itlin_map_2.png></td>
+					<td><img src=examples/cmb_2d_corr_itcubic_map_2.png></td>
+					<td><img src=examples/cmb_2d_corr_lin_map_2.png></td>
+					<td><img src=examples/cmb_2d_corr_cubic_map_2.png></td>
+					<td><img src=examples/cmb_2d_corr_srcwhite_map_2.png></td>
+					<td><img src=examples/cmb_2d_corr_srcsamp_map_2.png></td>
+				</tr>
+				<tr>
+					<th>gain error wdiff</th>
+					<td><img src=examples/cmb_gain_2d_uncorr_map_2.png></td>
+					<td><img src=examples/cmb_gain_2d_corr_map_2.png></td>
+					<td><img src=examples/cmb_gain_2d_corr_itlin_map_2.png></td>
+					<td><img src=examples/cmb_gain_2d_corr_itcubic_map_2.png></td>
+					<td><img src=examples/cmb_gain_2d_corr_lin_map_2.png></td>
+					<td><img src=examples/cmb_gain_2d_corr_cubic_map_2.png></td>
+					<td><img src=examples/cmb_gain_2d_corr_srcwhite_map_2.png></td>
+					<td><img src=examples/cmb_gain_2d_corr_srcsamp_map_2.png></td>
+				</tr>
+				<tr>
+					<th>pt. error wdiff</th>
+					<td><img src=examples/cmb_ptoff_2d_uncorr_map_2.png></td>
+					<td><img src=examples/cmb_ptoff_2d_corr_map_2.png></td>
+					<td><img src=examples/cmb_ptoff_2d_corr_itlin_map_2.png></td>
+					<td><img src=examples/cmb_ptoff_2d_corr_itcubic_map_2.png></td>
+					<td><img src=examples/cmb_ptoff_2d_corr_lin_map_2.png></td>
+					<td><img src=examples/cmb_ptoff_2d_corr_cubic_map_2.png></td>
+					<td><img src=examples/cmb_ptoff_2d_corr_srcwhite_map_2.png></td>
+					<td><img src=examples/cmb_ptoff_2d_corr_srcsamp_map_2.png></td>
+				</tr>
+			</table>
+			<figcaption>
+				<dfn>Figure 3</dfn>: Like figure 2, but for a noiseless CMB-like signal instead of
+				a strong point source. <dfn>Top:</dfn> the resulting maps. <dfn>Middle</dfn>:
+				the root-mean-square of the residual (data-model) per pixel. <dfn>Bottom</dfn>:
+				The difference between each map and the standard uncorrelated case. The color
+				range is &pm;4 in arbitrary units at the top and &pm;0.1 in the same units in
+				the middle and bottom. The small gain and pointing errors we simulate here have
+				almost no effect for low dynamic range fields like the CMB.
+			</figcaption>
+		</figure>
+
+		<h2>Technical</h2>
+		<h3>Nearest neighbor P</h3>
+		<p>Given a map m[ny,nx] and arrays y[nsamp], x[nsamp] containing the x and y pixel coordinates
+		of each sample, the forward operation $a = Pm$ can be implemented as <pre><code>for i in range(nsamp):
+    a[i] = m[round(y[i]),round(x[i])]</code></pre>
+		and the backward operation $b = P^Td$ can be implemented as <pre><code>for i in range(nsamp):
+    b[round(y[i]),round(x[i])] += d[i]</code></pre>
+		<h3>Bilinear P</h3>
+		<p>The forward operation now depends on the 4 pixels closest to each point.</p>
+<pre><code>for i in range(nsamp):
+    py1, py2 = floor(y[i]), ceil(y[i])
+    px1, px2 = floor(x[i]), ceil(x[i])
+    ry,  rx  = y[i]-py1, x[i]-px1
+    vx1 = m[py1,px1] * (1-rx) + m[py1,px2] * rx
+    vx2 = m[py2,px1] * (1-rx) + m[py2,px2] * rx
+    a[i] = vx1 * (1-ry) + vx2 * ry</code></pre>
+		<p>The backward operation is:</p>
+<pre><code>for i in range(nsamp):
+    py1, py2 = floor(y[i]), ceil(y[i])
+    px1, px2 = floor(x[i]), ceil(x[i])
+    ry,  rx  = y[i]-py1, x[i]-px1
+    vx1 = a[i] * (1-ry)
+    vx2 = a[i] * ry
+    m[py1,px1] += vx1 * (1-rx)
+    m[py1,px2] += vx1 * rx
+    m[py2,px1] += vx2 * (1-rx)
+    m[py2,px2] += vx2 * rx</code></pre>
+		<h3>Bicubic P</h3>
+		<p>This one is pretty complicated. Should we leave it out and only refer to pixell.interpolate?
+		On the other hand it might be useful for someone.</p>
+	</body>
+</html>

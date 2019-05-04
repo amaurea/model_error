@@ -6,7 +6,7 @@
 # instead of special purpose code, and interfaces will keep as simple
 # as possible, even at the cost of some recomputation.
 from __future__ import division, print_function
-import numpy as np, warnings
+import numpy as np, warnings, os, errno
 from scipy import ndimage
 from scipy.sparse import linalg
 
@@ -19,7 +19,7 @@ class PmatNearest:
 		ipoint      = np.round(pointing).astype(int)
 		self.fpoint = np.ravel_multi_index(np.rollaxis(ipoint,-1), shape, mode="wrap")
 	def tod2map(self, tod):
-		return np.bincount(self.fpoint.reshape(-1), tod.reshape(-1), minlength=self.shape[0]*self.shape[1]).reshape(self.shape)
+		return np.bincount(self.fpoint.reshape(-1), tod.reshape(-1), minlength=prod(self.shape)).reshape(self.shape)
 	def map2tod(self, map):
 		return map.reshape(-1)[self.fpoint]
 
@@ -29,10 +29,11 @@ class PmatSpline:
 		self.shape  = shape
 		self.fpoint = np.rollaxis(pointing,2)
 		self.order  = order
+		self.ndim   = len(shape)
 	def tod2map(self, tod): raise NotImplementedError
 	def map2tod(self, map):
 		tod = np.zeros(self.fpoint.shape[1:])
-		return ndimage.map_coordinates(map, self.fpoint.reshape(2,-1), order=self.order, mode="wrap").reshape(self.fpoint.shape[1:])
+		return ndimage.map_coordinates(map, self.fpoint.reshape(self.ndim,-1), order=self.order, mode="wrap").reshape(self.fpoint.shape[1:])
 
 class PmatSplinePixell:
 	"""Spline interpolation pointing matrix"""
@@ -40,25 +41,27 @@ class PmatSplinePixell:
 		self.shape  = shape
 		self.fpoint = np.ascontiguousarray(np.rollaxis(pointing,2))
 		self.order  = order
+		self.ndim   = len(shape)
 	def tod2map(self, tod):
 		from pixell import interpol
 		map = np.zeros(self.shape)
 		tod = np.ascontiguousarray(tod)
-		interpol.map_coordinates(map, self.fpoint.reshape(2,-1), odata=tod.reshape(-1), order=self.order, border="cyclic", trans=True)
+		interpol.map_coordinates(map, self.fpoint.reshape(self.ndim,-1), odata=tod.reshape(-1), order=self.order, border="cyclic", trans=True)
 		return map
 	def map2tod(self, map):
 		from pixell import interpol
 		tod = np.zeros(self.fpoint.shape[1:])
-		interpol.map_coordinates(map, self.fpoint.reshape(2,-1), odata=tod, order=self.order, border="cyclic").reshape(self.fpoint.shape[1:])
+		interpol.map_coordinates(map, self.fpoint.reshape(self.ndim,-1), odata=tod, order=self.order, border="cyclic").reshape(self.fpoint.shape[1:])
 		return tod
 
 class NmatIdentity:
 	def apply(self, tod): return tod.copy()
 	def white(self, tod): return tod.copy()
+	def sim(self, ntod, nsamp): return np.random.standard_normal([ntod,nsamp])
 
 class NmatOneoverf:
 	"""Simple noise model with white noise plus an atmosphere-like 1/f profile"""
-	def __init__(self, nsamp, fknee=0.02, alpha=-6, sigma=1, nsub=1):
+	def __init__(self, nsamp, fknee=0.02, alpha=-4, sigma=1, nsub=1):
 		self.fknee, self.alpha, self.sigma = fknee, alpha, sigma
 		self.freqs   = np.fft.fftfreq(nsamp)*nsub
 		# numpy will generate a useless warning here, even though the
@@ -66,12 +69,14 @@ class NmatOneoverf:
 		with nowarn():
 			self.profile = self.sigma**-2*(1 + (np.abs(self.freqs)/fknee)**alpha)**-1
 		self.profile = np.maximum(self.profile, 1e-10)
-	def apply(self, tod):
+	def apply(self, tod, pow=1):
 		ft  = np.fft.fft(tod)
-		ft *= self.profile
+		ft *= self.profile**pow
 		return np.fft.ifft(ft, n=tod.shape[-1]).real
 	def white(self, tod):
 		return tod * self.sigma**-2
+	def sim(self, ntod, nsamp):
+		return self.apply(np.random.standard_normal([ntod,nsamp]), pow=-1)
 
 class NmatNotch:
 	"""Simple noise model representing white noise, but with downweighting of signal
@@ -86,6 +91,8 @@ class NmatNotch:
 		return np.fft.ifft(ft, n=tod.shape[-1]).real
 	def white(self, tod):
 		return tod
+	def sim(self, ntod, nsamp):
+		return np.random.standard_normal([ntod,nsamp])
 
 def build_pointing_1d(shape, nsub=1, nscan=1, ntod=1):
 	"""Build a simple 1d pointing [ntod,nsamp,1] where nsamp=npix*nsub*nscan.
@@ -97,7 +104,7 @@ def build_pointing_1d(shape, nsub=1, nscan=1, ntod=1):
 	# Allow passing npix either directly or as a shape (i.e. a tuple)
 	try:              npix = shape[0]
 	except TypeError: npix = shape
-	nsamp    = npix*nsamp*nscan
+	nsamp    = npix*nsub*nscan
 	pointing = np.linspace(0, npix*nscan, nsamp, endpoint=False)%npix
 	pointing = np.repeat(pointing[None,:,None],ntod,1)
 	return pointing
@@ -139,7 +146,7 @@ def build_cmblike_map(shape, alpha=-1, amp=1.0, sigma=1, nsub=1):
 	fmap   = np.fft.fft2(rmap)
 	fmap  *= scale
 	# Apply beam
-	fmap  *= np.exp(-0.5*(k*nsub*sigma)**2)
+	fmap  *= np.exp(-0.5*(k*nsub*sigma*2*np.pi)**2)
 	omap   = np.fft.ifft2(fmap, shape).real
 	return omap
 
@@ -167,7 +174,7 @@ def solve_cg(data, pmat, nmat=NmatIdentity(), callback=None):
 	x, info = linalg.cg(A, rhs.reshape(-1), callback=callfun)
 	return x.reshape(rhs.shape)
 
-def solve_brute(data, pmat, nmat=NmatIdentity(), callback=None):
+def solve_brute(data, pmat, nmat=NmatIdentity(), callback=None, verbose=False):
 	"""Find the map that best reproduces the data by solving
 	the equation system map = (P'N"P)"P'N"d brute force, where ' means transpose
 	and " means inverse, and d,P,N correspond to data,pmat,nmat."""
@@ -178,7 +185,7 @@ def solve_brute(data, pmat, nmat=NmatIdentity(), callback=None):
 	Amat = np.zeros([npix,npix])
 	I    = np.eye(npix)
 	for i, v in enumerate(I):
-		if i % 100 == 0: print("%6d/%d" % (i,npix))
+		if verbose and i % 100 == 0: print("%6d/%d" % (i,npix))
 		Amat[i] = Afun(v)
 	omap = np.linalg.solve(Amat, rhs.reshape(-1)).reshape(rhs.shape)
 	return omap
@@ -256,7 +263,7 @@ def expand_samps(samps, mask):
 	tod[mask] = samps
 	return tod
 
-def fill_mask_constrained(data, mask, nmat, known_tol=1.0):
+def fill_mask_constrained(data, mask, nmat, known_tol=1.0, cg_tol=1e-9):
 	"""Given data[ntod,nsamp] and a boolean mask of the same shape
 	selecting some of those samples, return a new array where the
 	selected samples have been replaced by the ML prediction based
@@ -272,15 +279,21 @@ def fill_mask_constrained(data, mask, nmat, known_tol=1.0):
 	def Afun(x):
 		x   = x.reshape(data.shape)
 		Ax  = nmat.apply(x) + M*x
+		resid = (data-x)
 		return Ax.reshape(-1)
 	A = linalg.LinearOperator((rhs.size, rhs.size), matvec=Afun)
-	x, info = linalg.cg(A, rhs.reshape(-1))
+	x, info = linalg.cg(A, rhs.reshape(-1), tol=cg_tol)
 	odata = x.reshape(rhs.shape)
 	# Copy over known data from input, so it doesn't change
 	odata[~mask] = data[~mask]
 	return odata
 
 # General utilities
+
+def prod(shape):
+	res = 1
+	for s in shape: res *= s
+	return s
 
 def plot_map(map, range=4, sub=True):
 	from matplotlib import pyplot
@@ -296,6 +309,13 @@ class nowarn:
 		return self
 	def __exit__(self, type, value, traceback):
 		warnings.filters = self.filters
+
+def mkdir(path):
+	try:
+		os.makedirs(path)
+	except OSError as exception:
+		if exception.errno != errno.EEXIST:
+			raise
 
 # Matplotlib color stuff
 

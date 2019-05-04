@@ -1,58 +1,155 @@
-import numpy as np, toy
+import numpy as np, toy, os
 from matplotlib import pyplot
+
+def dump_tod(fname, data, map, pmat):
+	ndim  = pointing.shape[-1]
+	model = pmat.map2tod(map)
+	print("Writing %s" % fname)
+	np.save(fname, np.concatenate([
+		pointing.reshape(-1,ndim), data.reshape(-1,1), model.reshape(-1,1)],-1))
+
+def dump_map(fname, data, map, pmat, pwhite):
+	model = pmat.map2tod(map)
+	rmap  = toy.solve_white((data-model)**2, pwhite)**0.5
+	dmap  = map - toy.solve_white(data, pwhite)
+	print("Writing %s" % fname)
+	np.save(fname, np.array([map, rmap, dmap]))
+
+def run_1d(prefix, shape, pointing, data):
+	# Solve using standard nearest neighbor and a white noise model
+	pmat     = toy.PmatNearest(pointing, shape)
+	omap     = toy.solve_white(data, pmat)
+	dump_tod(prefix + "_1d_uncorr_tod.npy", data, omap, pmat)
+
+	# Solve using correlated noise model instead
+	nmat     = toy.NmatOneoverf(data.shape[-1], nsub=nsub)
+	omap     = toy.solve_brute(data, pmat, nmat)
+	dump_tod(prefix + "_1d_corr_tod.npy", data, omap, pmat)
+
+	# Solve using linear interpolation
+	pmat_lin = toy.PmatSplinePixell(pointing, shape, order=1)
+	omap     = toy.solve_brute(data, pmat_lin, nmat)
+	dump_tod(prefix + "_1d_corr_lin_tod.npy", data, omap, pmat_lin)
+
+	# Solve using cubic spline interpolation
+	pmat_cubic = toy.PmatSplinePixell(pointing, shape, order=3)
+	omap     = toy.solve_brute(data, pmat_cubic, nmat)
+	dump_tod(prefix + "_1d_corr_cubic_tod.npy", data, omap, pmat_cubic)
+
+	# Iterative linear (approximation to proper linear)
+	omap     = toy.solve_iterative(data, pmat, pmat_lin, nmat)
+	dump_tod(prefix + "_1d_corr_itlin_tod.npy", data, omap, pmat_lin)
+
+	# Iterative cubic (approximation to proper cubic)
+	omap     = toy.solve_iterative(data, pmat, pmat_cubic, nmat)
+	dump_tod(prefix + "_1d_corr_itcubic_tod.npy", data, omap, pmat_cubic)
+
+	# local white model
+	mask     = toy.build_mask_disk(pointing, pos, 5)
+	omap     = toy.solve_mask_white(data, pmat, mask, nmat)
+	dump_tod(prefix + "_1d_corr_srcwhite_tod.npy", data, omap, pmat)
+
+	# local extra degrees of freedom
+	omap     = toy.solve_cg_mask_persamp(data, pmat, mask, nmat)
+	dump_tod(prefix + "_1d_corr_srcsamp_tod.npy", data, omap, pmat)
+
+def run_2d(prefix, shape, pointing, data):
+	# Solve using standard nearest neighbor and a white noise model
+	pmat     = toy.PmatNearest(pointing, shape)
+	omap     = toy.solve_white(data, pmat)
+	dump_map(prefix + "_2d_uncorr_map.npy", data, omap, pmat, pmat)
+
+	# Correlated noise model
+	nmat     = toy.NmatOneoverf(data.shape[-1], nsub=nsub)
+	omap     = toy.solve_cg(data, pmat, nmat)
+	model    = pmat.map2tod(omap)
+	dump_map(prefix + "_2d_corr_map.npy", data, omap, pmat, pmat)
+
+	# bilinear interpolation
+	pmat_lin = toy.PmatSplinePixell(pointing, shape, order=1)
+	omap     = toy.solve_cg(data, pmat_lin, nmat)
+	dump_map(prefix + "_2d_corr_lin_map.npy", data, omap, pmat_lin, pmat)
+
+	# bicubic interpolation
+	pmat_cubic = toy.PmatSplinePixell(pointing, shape, order=3)
+	omap     = toy.solve_cg(data, pmat_cubic, nmat)
+	dump_map(prefix + "_2d_corr_cubic_map.npy", data, omap, pmat_cubic, pmat)
+
+	# local white model
+	mask     = toy.build_mask_disk(pointing, pos, 5)
+	omap     = toy.solve_mask_white(data, pmat, mask, nmat)
+	dump_map(prefix + "_2d_corr_srcwhite_map.npy", data, omap, pmat, pmat)
+
+	# local extra degrees of freedom
+	omap     = toy.solve_cg_mask_persamp(data, pmat, mask, nmat)
+	dump_map(prefix + "_2d_corr_srcsamp_map.npy", data, omap, pmat, pmat)
+
+	# Iterative linear (approximation to proper linear)
+	omap     = toy.solve_iterative(data, pmat, pmat_lin, nmat)
+	dump_map(prefix + "_2d_corr_itlin_map.npy", data, omap, pmat_lin, pmat)
+
+	# Iterative cubic (approximation to proper cubic)
+	omap     = toy.solve_iterative(data, pmat, pmat_cubic, nmat)
+	dump_map(prefix + "_2d_corr_itcubic_map.npy", data, omap, pmat_cubic, pmat)
 
 np.random.seed(1)
 toy.mpl_setdefault("planck")
+toy.mkdir("examples")
+
+# 1d examples. 100 pixels with 11 samples per pixel, simple point source
+# in the middle with gaussian profile. Single TOD.
+shape    = np.array([100])
+pos      = (shape-1)/2
+nsub     = 11
+pointing = toy.build_pointing_1d(shape, nsub=nsub)
+data     = toy.build_signal_src(pointing, pos, amp=1, sigma=1.0)
+run_1d("examples/src", shape, pointing, data)
+
+# 2d examples. 81x81 pixels. Simple point source in the middle with gaussian profile.
+# 2 tods: 1 vertical and 1 horizontal. 3 samples per pixel in each direction.
 shape    = np.array([81,81])
-#shape    = np.array([9,9])
 pos      = (shape-1)/2
 nsub     = 3
+amp      = 2e4
 sigma    = 1.0
+pointing = toy.build_pointing_2d(shape, nsub=nsub, ntod=2)
+# Consdier src, cmb and noise
+signal_src  = toy.build_signal_src(pointing, pos, amp=amp, sigma=sigma)
+cmb_highres = toy.build_cmblike_map(shape, nsub=nsub, sigma=sigma)
+signal_cmb  = toy.build_signal_from_map(pointing, cmb_highres, nsub=nsub)
+nmat        = toy.NmatOneoverf(signal_src.shape[-1], nsub=nsub)
+noise       = nmat.sim(*signal_src.shape)
 
-pointing = toy.build_pointing_2d(shape, nsub=nsub, ntod=2)#, independent_rows=True)
-#data     = toy.build_signal_src(pointing, pos, amp=np.array([10000,9900])[:,None], sigma=sigma)
-#data     = toy.build_signal_src(pointing, np.array([pos,pos+[0.1,0.1]])[:,None,:], amp=10000, sigma=sigma)
-data     = toy.build_signal_src(pointing, pos, amp=10000, sigma=sigma)
-cmb_high = toy.build_cmblike_map(shape, nsub=nsub, sigma=sigma)
-data    += toy.build_signal_from_map(pointing, cmb_high, nsub=nsub)
+run_2d("examples/src", shape, pointing, signal_src)
+run_2d("examples/cmb", shape, pointing, signal_cmb)
+run_2d("examples/src_cmb", shape, pointing, signal_src+signal_cmb)
 
-mask     = toy.build_mask_disk(pointing, pos, 5)
+run_2d("examples/src_noise", shape, pointing, signal_src+noise)
+run_2d("examples/cmb_noise", shape, pointing, signal_cmb+noise)
+run_2d("examples/src_cmb_noise", shape, pointing, signal_src+signal_cmb+noise)
 
-# Subpixel filtering does not work. It removes subpixel aliasing along
-# the scanning direction, but not in the perpendicular direction.
-#data     = toy.filter_subpix(data, pointing, shape)
+# Pointing offset
+offsets = np.array([[0,0],[1,1]])[:,None,:]/2**0.5 * 1e-2
+signal_src = toy.build_signal_src(pointing+offsets, pos, amp=amp, sigma=sigma)
+signal_cmb = toy.build_signal_from_map(pointing+offsets, cmb_highres, nsub=nsub)
 
-nmat       = toy.NmatOneoverf(data.shape[-1], nsub=nsub)
-#nmat       = toy.NmatNotch(data.shape[-1], nsub=nsub)
-pmat       = toy.PmatNearest(pointing, shape)
-pmat_spline= toy.PmatSplinePixell(pointing, shape, order=1)
+run_2d("examples/src_ptoff", shape, pointing, signal_src)
+run_2d("examples/cmb_ptoff", shape, pointing, signal_cmb)
+run_2d("examples/src_cmb_ptoff", shape, pointing, signal_src+signal_cmb)
 
-#data       = toy.fill_mask_constrained(data, mask, nmat)
+run_2d("examples/src_noise_ptoff", shape, pointing, signal_src+noise)
+run_2d("examples/cmb_noise_ptoff", shape, pointing, signal_cmb+noise)
+run_2d("examples/src_cmb_noise_ptoff", shape, pointing, signal_src+signal_cmb+noise)
 
-omap_white = toy.solve_cg(data, pmat)
-#omap_oof   = toy.solve_brute(data, pmat, nmat)
-#omap_oof   = toy.solve_cg(data, pmat, nmat)
-#omap_oof    = toy.solve_iterative(data, pmat, pmat_spline, nmat, callback=toy.plot_map)
+# Amplitude variability
+gains = np.array([0.995,1.005])[:,None]
+signal_src = toy.build_signal_src(pointing, pos, amp=amp, sigma=sigma)*gains
+signal_cmb = toy.build_signal_from_map(pointing, cmb_highres, nsub=nsub)*gains
 
-#omap_oof   = toy.solve_cg(data, pmat_spline, nmat)
-#omap_oof   = toy.solve_cg_mask_persamp(data, pmat, mask, nmat)
-omap_oof   = toy.solve_mask_white(data, pmat, mask, nmat)
-#omap_oof  -= omap_oof[0,0]
+run_2d("examples/src_gain", shape, pointing, signal_src)
+run_2d("examples/cmb_gain", shape, pointing, signal_cmb)
+run_2d("examples/src_cmb_gain", shape, pointing, signal_src+signal_cmb)
 
-toy.plot_map(omap_oof,   range=4)
-#toy.plot_map(omap_white, range=4)
-
-model_white = pmat.map2tod(omap_white)
-model_oof   = pmat.map2tod(omap_oof)
-#model_oof   = pmat_spline.map2tod(omap_oof)
-
-for i in range(2):
-	np.savetxt("tod%d.txt" % i, np.concatenate([
-		pointing[i], data[i,:,None], model_white[i,:,None], model_oof[i,:,None]],-1), fmt="%15.7e")
-
-#pyplot.matshow(omap_white, vmin=-4, vmax=4)
-#pyplot.matshow(omap_oof,   vmin=-4, vmax=4)
-#pyplot.show()
-
-
-
+run_2d("examples/src_noise_gain", shape, pointing, signal_src+noise)
+run_2d("examples/cmb_noise_gain", shape, pointing, signal_cmb+noise)
+run_2d("examples/src_cmb_noise_gain", shape, pointing, signal_src+signal_cmb+noise)
