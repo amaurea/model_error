@@ -17,7 +17,8 @@
 			table  { table-layout: fixed; width: 100%; }
 			table.pix img { image-rendering: optimizeSpeed; }
 			h1, h2, h3 { text-align: center; }
-			p, figcaption { text-align: justify; margin: 0.5em; }
+			p, figcaption { text-align: justify; }
+			figcaption { margin: 0.5em; }
 			tr.sub th { font-size: 70%; }
 			dfn { font-weight: bold; }
 		</style>
@@ -25,7 +26,7 @@
 	<body>
 		<h1>How to avoid X'es around point sources in maximum likelihood CMB maps</h1>
 
-		<h2>Introduction</h2>
+		<h2>1. Introduction</h2>
 		<p>CMB telescopes map the sky by scanning an array of detectors repeatedly across
 		the sky, resulting in a time-series of samples $d$. This process is usually
 		modeled via the linear equation</p>
@@ -45,28 +46,41 @@
 		\begin{align}
 		\langle \hat m \rangle &= (P^T N^{-1} P)^{-1}P^T N^{-1}(Pm + \overbrace{\langle n \rangle}^{0}) = m
 		\end{align}
-		<p>Given this result it might be surprising to hear that bias in maximum-likelihood maps
-		made using eq. \ref{eq:mapmaking} is actually quite common, with the archetypical example
+		<p>Given this result it might be surprising to hear that most maximum-likelihood maps
+		made using eq. \ref{eq:mapmaking} are biased to some extent, with the archetypical example
 		being lines extending away from bright point sources in the map, often in the shape of an X
 		(but this depends on the telescope's scanning pattern). The source of this bias is <em>model
 			error</em>: the failure of eq. \ref{eq:mapmaking} to accurately describe the real data; and
 		in this paper I will describe the main types of model error in maximum-likelihood mapmaking, simulate their
 		effect and investigate several methods for mitigating or eliminating them.</p>
 
-		<h2>Aliasing of sub-pixel structure</h2>
+		<h2>2. Sub-pixel structure</h2>
 		<p>The most obvious problem with eq. \ref{eq:model} is that it models the sky as a
 		finite vector of pixels, which will leave out any signal on scales smaller than the
-		pixel spacing. This is exacerbated by the canonical choice of a nearest-neighbor response
-		model in $P$, which means that the value of each sample is simply given by that of the
-		closest pixel to it, regardless of how far away from the pixel center it is. The resulting
-		model error is illustrated in figure 1.
+		pixel spacing. This is exacerbated by the canonical choice of a <em>nearest-neighbor</em> response
+		model in $P$. In this model, that the value of each sample is simply given by the value of the
+		closest pixel to it, regardless of how far away from the pixel center it is. This results
+		in a response matrix with a very simple structure: For each row (representing a sample)
+		a single element will be 1 (representing the pixel hit by that sample), and all others
+		will be zero.</p>
+		<p>Multiplication by a matrix with this structure is simple and efficient.
+		Given a map m[ny,nx] and arrays y[nsamp], x[nsamp] containing the x and y pixel coordinates
+		of each sample, the forward operation $d = Pm$ can be implemented as</p>
+		<pre><code>for i in range(nsamp):
+    d[i] = m[round(y[i]),round(x[i])]</code></pre>
+		<p>and the transpose operation $m = P^Td$ can be implemented as</p>
+		<pre><code>for i in range(nsamp):
+    m[round(y[i]),round(x[i])] += d[i]</code></pre>
+		<p>However, this simplicity comes at a cost: The signal model implied by this
+		response matrix has a constant value inside each pixel and a discontinuous jump
+		at the edge of each pixel. This model and the resulting error is illustrated in figure 1.
 		</p>
 		<figure class=wide>
 			<table>
 				<tr><th>uncorrelated</th><th>correlated</th></tr>
 				<tr>
-					<td><img src=example_1d_uncorr_log.svg></td>
-					<td><img src=example_1d_corr_log.svg></td>
+					<td><img src=examples/src_1d_uncorr_tod_log.svg></td>
+					<td><img src=examples/src_1d_corr_tod_log.svg></td>
 				</tr>
 			</table>
 			<figcaption>
@@ -79,11 +93,11 @@
 				than the signal that sourced them.
 			</figcaption>
 		</figure>
-		<p>Nearest-neighbor pixelization results in a model that looks like a series of step functions,
-		which clearly cannot match the smooth behavior of the beam-convolved sky. The only term in
-		eq. \ref{eq:model} that can absorb such a mismatch is the noise $n$, and so how this model
-		error manifests is determined by our noise model $N$.</p>
-		<p>If $N$ is assumed to be uncorrelated ($N \propto I$), then a high value of the residual
+		<p>A step-function model like this clearly cannot match the smooth behavior of the beam-convolved
+		sky, and the only term in eq. \ref{eq:model} that can absorb such a mismatch between the data
+		and the model is the noise term $n$. How this model error manifests is therefore determined by
+		our noise model $N$.</p>
+		<p>If $N$ is assumed to be uncorrelated ($N$ diagonal in time domain), then a high value of the residual
 		(honorary noise as far as our data model is concerned) in one sample does not tell us
 		anything about what the noise is doing in any other samples, and so the residual
 		just stays in the pixel that birthed it. The value in each pixel is therefore just
@@ -101,10 +115,173 @@
 		there, the best fit model must cancel the expected noise, resulting in a non-zero model
 		extending far beyond the area with significant signal.</p>
 
-		<h3>Higher-order mapmaking</h3>
+		<h3>2.1. Higher-order mapmaking</h3>
 		<p>Since the largest source of sub-pixel bias is the use of nearest-neighbor interpolation in
 		the response matrix $P$, the obvious next step is to use a smoother interpolation function,
-		such as the popular bilinear and bicubic spline interpolations.</p>
+		such as bilinear and bicubic spline interpolation. These are popular in image processing, but
+		are as far as I am aware unused in CMB map making.</p>
+		<p>Bilinear interpolation is considerably slower and more complicated than nearest neighbor,
+		and each sample now interacts with the four closest pixels instead of just one.
+		The forward operation $d=Pm$ is now:</p>
+<pre><code>for i in range(nsamp):
+    py1, py2 = floor(y[i]), ceil(y[i])
+    px1, px2 = floor(x[i]), ceil(x[i])
+    ry,  rx  = y[i]-py1, x[i]-px1
+    vx1 = m[py1,px1] * (1-rx) + m[py1,px2] * rx
+    vx2 = m[py2,px1] * (1-rx) + m[py2,px2] * rx
+    d[i] = vx1 * (1-ry) + vx2 * ry</code></pre>
+		<p>The transpose operation $m=P^Td$ is:</p>
+<pre><code>for i in range(nsamp):
+    py1, py2 = floor(y[i]), ceil(y[i])
+    px1, px2 = floor(x[i]), ceil(x[i])
+    ry,  rx  = y[i]-py1, x[i]-px1
+    vx1 = d[i] * (1-ry)
+    vx2 = d[i] * ry
+    m[py1,px1] += vx1 * (1-rx)
+    m[py1,px2] += vx1 * rx
+    m[py2,px1] += vx2 * (1-rx)
+    m[py2,px2] += vx2 * rx</code></pre>
+		<p>Bicubic spline interpolation is another large step up in complexity. See the appendix for details.</p>
+		<p>Figure 2 shows how these higher-order interpolation schemes perform for the same
+		1D gaussian simulation we considered in figure 1.</p>
+		<figure class=wide>
+			<img src=examples/src_1d_highorder.svg></td>
+			<figcaption>
+				<dfn>Figure 2</dfn>: Comparison of the maximum-likelihood models for nearest neighbor,
+				linear and cubic interpolation in the response matrix for uncorrelated and correlated
+				noise models, for the same data as in figure 1. Linear and cubic interpolation fit the
+				central part of the profile much better than nearest neigbor, leading to lower discrepancy
+				between the data and model at high radius in the correlated case (solid curves).
+				But this situation is reversed for the uncorrelated
+				noise model (dashed curves). This happens because the linear and cubic models are inherently non-local,
+				and are willing to sacrifice accuracy in areas where the signal is very weak in order to
+				get a better match in areas with strong signal.
+			</figcaption>
+		</figure>
+		<p>Both linear and cubic interpolation fit the peak of the gaussian much better than nearest neighbor,
+		resulting in roughly 4 orders of magnitude lower spurious signal at high radius for the case with
+		a correlated noise model. However, they only reach this level at large radii. Before this, the
+		spurious signal is dominated by a new effect that was not present for nearest neighbor interpolation:
+		Higher order interpolation is inherently non-local, which means that each pixel is correlated with
+		its neighbors (and neighbors-neighbors for bicubic). This is responsible for the exponentially
+		decaying ringing pattern we see in the figure for these interpolation types, even for uncorrelated noise.
+		Effectively the fit is sacrificing accuracy at large radius in order to fit the strong, central
+		peak slightly better.</p>
+		<p>So we see that high interpolation order has smaller total residuals and hence lower
+		non-local artifacts from the noise correlations, but low-order interpolation has shorter
+		correlation length for the interpolation functions themselves, leading to a faster decay of
+		the ringing. For the example in figure 2, the sweet spot is linear interpolation.</p>
+		<p>Even better locality (at even higher cost) should be possible with an interpolation
+		function based on the actual point spread function of the instrument (cite wandelt here?).
+		However, there are diminishing returns when reducing sub-pixel errors because there is another
+		class of model errors that if often much larger, as we shall see in section 3.</p>
+
+		<h3>2.2. Point source subtraction</h3>
+		<p>In figure 1 we saw that non-local sub-pixel artifacts could extend far away from the
+		signal that sourced them, but it also bears noting that their amplitude was about
+		$10^4$ times lower than the source. For a smooth, low-contrast signal like the
+		cosmic microwave background, each pixel is contaminated by non-local artifacts from
+		other pixels in the vincinity, but since those other pixels have signal of similar
+		amplitude but random phase, one can expect each pixel to only be contaminated at the
+		$10^{-4}$ level, which is negligible. Non-local model errors are therefore only
+		a concern when a strong, compact signal is close to a region of weaker signal. In
+		CMB map-making the typical case would be a strong point source like a quasar.</p>
+		<p>High-order interpolation treats the whole sky the same, and has the advantage that it
+		can be done blindly, with no prior knowledge about which parts of the sky might
+		be important sources of non-local artifacts. This comes at a large performance
+		penalty, however. And as we have seen, the most acessible such methods, linear and and cubic spline
+		interpolation, do not perfectly eliminate this bias.</p>
+		<p>If one does know the location
+		and amplitude of the bright point sources in the sky, however, a much simpler approach
+		is to simply subtract those point sources in the data before making the map. This
+		results in a map free of both the point sources (which can be useful in itself)
+		and the artifacts they would have sourced. If needed, the source model can then be
+		projected onto the sky using an uncorrelated noise model $W$ (for example $W=I$)
+		and added back to the map.
+		\begin{align}
+		\hat m_\textrm{srcfree} &= (P^TN^{-1}P)^{-1}P^TN^{-1}(d - \sum_i A_i B_i) \\
+		\hat m_\textrm{tot} &= \hat m_\textrm{srcfree} + (P^TW^{-1}P)^{-1}P^T W^{-1}\sum_i A_i B_i
+		\end{align}
+		Here $A_i$ is the amplitude of source $i$, and $B_i$ is a vector of each sample's
+		response to an instrument beam centered on the position of that source. Cite
+		something.
+		</p>
+
+		<h2>3. Inconsistency</h2>
+		<p>Real telescopes don't have 100% accurate pointing and gain, and even if they did, the
+		sky is not static and unchanging. These effects mean the telescope effectively sees the
+		sky jitter around slightly while varying in brightness. There is no room for this in
+		eq. \ref{eq:model} aside from the noise term $n$, so time-variable instrumental errors
+		lead to exactly the same sort of non-local model errors as
+		sub-pixel errors do. But since these errors are not sourced by sub-pixel structures,
+		neither higher-order interpolation nor point source subtraction help here.</p>
+		<p>The non-local artifacts are ultimately caused by two factors:</p>
+		<ol>
+			<li>Multiple samples are mapped onto the same pixel, but don't agree on what that
+				pixel should be.</li>
+			<li>The correlated noise model causes a non-local response to such errors.</li>
+		</ol>
+		<p>This points to two approaches for eliminating the artifacts: Model the noise as
+		uncorrelated, or add more degrees of freedom.</p>
+
+		<h3>3.1. White source mapping</h3>
+		<p>Of course, simply mapping using an uncorrelated noise model produce a useful in the presence of
+		realistic correlated noise. However, we don't need everything to be uncorrelated to get
+		rid of the artifacts, we just need to decouple the bright point sources from those correlations.
+		This suggests the following approach:</p>
+		<ol>
+			<li>Make a point source free set of samples $d'$ from by smoothly inpainting the samples in $d$
+				that hit the bright sources, ideally using maximum likelihood inpainting, but the quality of the
+				inpainting only matters for the optimality of the method - bad inpainting will not cause a bias.</li>
+			<li>Make a maximum-likelihood map $\hat m'$ of the inpainted tod using the full noise model.
+				\begin{align}
+				\hat m' &= (P^TN^{-1}P)^{-1}P^T N^{-1} d'
+				\end{align}
+			</li>
+			<li>If the inpainted regions were small compared to the noise correlation length, then
+				the missing signal $d-d'$ from the previous map will have approximately white noise,
+				so we can map these bothersome samples using a simple white noise model:
+				\begin{align}
+				\Delta m &= (P^TW^{-1}P)^{-1}P^T W^{-1}(d-d')
+				\end{align}
+			</li>
+			<li>Add these maps to get the total, unbiased sky map: $\hat m = \hat m' + \Delta m$.</li>
+		</ol>
+		
+		<h3>3.2. Source sub-sampling</h3>
+		<p>We can eliminate model error by having at least one degree of freedom per sample,
+		but if we did that to every sample, there would be no averaging down of the noise,
+		and we wouldn't really get a map, just a reorganized version of the input data. However,
+		there is nothing wrong with oversampling like this just around strong point sources and
+		other problematic regions, as long as these regions are small compared to the noise
+		correlation length. This results in the model
+		\begin{align}
+		d &= Pm + Gs + n \\
+			&= \begin{bmatrix}P&G\end{bmatrix}\begin{bmatrix}m&s\end{bmatrix}^T + n \tag{3} \label{eq:joint}
+		\end{align}
+		Here $s$ are the new per-sample degrees of freedom for the samples that hit bright sources,
+		and $G$ the matrix that maps them 1-to-1 only the corresponding samples. To be explicit,
+		$a=Gs$ could be implemented as <code>a[mask] = s</code>, and $b=G^Td$ as <code>b = d[mask]</code>,
+		where mask is True for samples that hit bright sources and False otherwise.</p>
+		<p>One can then solve jointly for the maximum-likelihood values $\hat m$ and $\hat s$. This can still
+		be done using equation \ref{eq:mapmaking}, since equation \ref{eq:joint} is still of the same form
+		as equation \ref{eq:model}. $m$ and $s$ are in isolation not well defined. Some samples are
+		both covered by pixels from $m$ and by special per-sample degrees of freedom from $m$, so
+		signal can move freely from one to the other without changing the residuals. This can be avoided by
+		modifying $P$ to have it skip those samples, but it is not actually necessary, for
+		the total map
+		\begin{align}
+		\hat m_\textrm{tot}&= \hat m + (P^TW^{-1}P)^{-1}P^TW^{-1}\hat s
+		\end{align}
+		<em>is</em> well-defined in either case, and is the artifact-free map of the sky we are after.</p>
+		<p>An advantage of this method is that it is very similar to a common way to handle
+		per-sample cuts in maximum-likelihood map-making. There one also solves for an extra degree
+		of freedom per cut sample. The only difference is that we here don't throw that part of the
+		solution away afterwards, but instead project them back into the final map using a white noise model.
+		cite something here too</p>
+
+		<h2>4. Simulations</h2>
+		<h2>5. Results</h2>
 
 		<figure class=wide>
 			<table class=pix>
@@ -198,7 +375,7 @@
 				</tr>
 			</table>
 			<figcaption>
-				<p><dfn>Figure 2</dfn>: Model errors around a bright point source for the
+				<p><dfn>Figure 3</dfn>: Model errors around a bright point source for the
 				different methods discussed in this paper, for a simulation with 3x3
 				samples uniformly distributed inside each pixel for each of a vertical and
 				horizontal scanning pattern. The top half is for a noise free
@@ -347,7 +524,7 @@
 				</tr>
 			</table>
 			<figcaption>
-				<dfn>Figure 3</dfn>: Like figure 2, but for a noiseless CMB-like signal instead of
+				<dfn>Figure 4</dfn>: Like figure 2, but for a noiseless CMB-like signal instead of
 				a strong point source. <dfn>Top:</dfn> the resulting maps. <dfn>Middle</dfn>:
 				the root-mean-square of the residual (data-model) per pixel. <dfn>Bottom</dfn>:
 				The difference between each map and the standard uncorrelated case. The color

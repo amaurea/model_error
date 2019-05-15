@@ -21,6 +21,16 @@ def run_1d(prefix, shape, pointing, data):
 	omap     = toy.solve_white(data, pmat)
 	dump_tod(prefix + "_1d_uncorr_tod.npy", data, omap, pmat)
 
+	# Uncorrelated linear interpolation
+	pmat_lin = toy.PmatSplinePixell(pointing, shape, order=1)
+	omap     = toy.solve_brute(data, pmat_lin)
+	dump_tod(prefix + "_1d_uncorr_lin_tod.npy", data, omap, pmat_lin)
+
+	# Uncorrelated cubic spline interpolation
+	pmat_cubic = toy.PmatSplinePixell(pointing, shape, order=3)
+	omap       = toy.solve_brute(data, pmat_cubic)
+	dump_tod(prefix + "_1d_uncorr_cubic_tod.npy", data, omap, pmat_cubic)
+
 	# Solve using correlated noise model instead
 	nmat     = toy.NmatOneoverf(data.shape[-1], nsub=nsub)
 	omap     = toy.solve_brute(data, pmat, nmat)
@@ -99,7 +109,7 @@ toy.mkdir("examples")
 # 1d examples. 100 pixels with 11 samples per pixel, simple point source
 # in the middle with gaussian profile. Single TOD.
 shape    = np.array([100])
-pos      = (shape-1)/2
+pos      = shape/2
 nsub     = 11
 pointing = toy.build_pointing_1d(shape, nsub=nsub)
 data     = toy.build_signal_src(pointing, pos, amp=1, sigma=1.0)
@@ -108,7 +118,7 @@ run_1d("examples/src", shape, pointing, data)
 # 2d examples. 81x81 pixels. Simple point source in the middle with gaussian profile.
 # 2 tods: 1 vertical and 1 horizontal. 3 samples per pixel in each direction.
 shape    = np.array([81,81])
-pos      = (shape-1)/2
+pos      = shape/2
 nsub     = 3
 amp      = 2e4
 sigma    = 1.0
