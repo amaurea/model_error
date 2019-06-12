@@ -216,6 +216,34 @@ def solve_cg_mask_persamp(data, pmat, mask, nmat=NmatIdentity(), callback=None):
 	x, info = linalg.cg(A, rhs.reshape(-1), callback=callfun)
 	return combine(*unzip(x))
 
+def solve_cg_mask(data, pmat, mask, nmat=NmatIdentity(), callback=None):
+	"""Find the map that best reproduces the data by solving
+	the equation system map = (P'N"P)"P'N"d using conjugate gradients,
+	where ' means transpose and " means inverse, and d,P,N correspond to data,pmat,nmat."""
+	Nd        = nmat.apply(data)
+	rhs_map   = pmat.tod2map(Nd*~mask)
+	rhs_samps = Nd[mask]
+	npix, nsamp = rhs_map.size, rhs_samps.size
+	def zip(map, samps): return np.concatenate([map.reshape(-1),samps])
+	def unzip(x): return x[:npix].reshape(pmat.shape), x[npix:]
+	def combine(map, samps):
+		return map + solve_white(expand_samps(samps, mask), pmat)
+	def Afun(x):
+		imap, isamps = unzip(x)
+		tod          = pmat.map2tod(imap)*~mask
+		tod[mask]   += isamps
+		tod          = nmat.apply(tod)
+		omap         = pmat.tod2map(tod*~mask)
+		osamps       = tod[mask]
+		return zip(omap, osamps)
+	rhs     = zip(rhs_map, rhs_samps)
+	A       = linalg.LinearOperator((rhs.size, rhs.size), matvec=Afun)
+	callfun = lambda x: callback(combine(*unzip(x))) if callback else None
+	x, info = linalg.cg(A, rhs.reshape(-1), callback=callfun)
+	map, samps = unzip(x)
+	map[map==0] = np.nan
+	return map
+
 def solve_mask_white(data, pmat, mask, nmat=NmatIdentity(), callback=None, solver=solve_cg):
 	"""Solve for the map in two steps:
 	1. Make a gapfilled version of the data and solve that normally

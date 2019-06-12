@@ -1,5 +1,17 @@
-import numpy as np, toy, os
+import numpy as np, toy, os, sys
 from matplotlib import pyplot
+
+def get_outside(map, R):
+	pos  = np.array(map.shape)/2
+	r2   = np.sum((np.mgrid[:map.shape[0],:map.shape[1]]-pos[:,None,None])**2,0)
+	mask = r2>R**2
+	return map[mask]
+
+def demean(m): return m - 0.25*(m[0,0]+m[-1,0]+m[0,-1]+m[-1,-1])
+
+def measure_leakage(map, dmap, R=0):
+	map, dmap = demean(map), demean(dmap)
+	return np.max(np.abs(get_outside(dmap, R)))/np.max(np.abs(map))
 
 def dump_tod(fname, data, map, pmat):
 	ndim  = pointing.shape[-1]
@@ -14,6 +26,10 @@ def dump_map(fname, data, map, pmat, pwhite):
 	dmap  = map - toy.solve_white(data, pwhite)
 	print("Writing %s" % fname)
 	np.save(fname, np.array([map, rmap, dmap]))
+	leak_full = measure_leakage(map, dmap)
+	leak_far  = measure_leakage(map, dmap, 8)
+	print("Leakage %-50s %15.7e %15.7e" % (fname, leak_full, leak_far))
+	sys.stdout.flush()
 
 def run_1d(prefix, shape, pointing, data):
 	# Solve using standard nearest neighbor and a white noise model
@@ -63,7 +79,7 @@ def run_1d(prefix, shape, pointing, data):
 	omap     = toy.solve_cg_mask_persamp(data, pmat, mask, nmat)
 	dump_tod(prefix + "_1d_corr_srcsamp_tod.npy", data, omap, pmat)
 
-def run_2d(prefix, shape, pointing, data):
+def run_2d(prefix, shape, pointing, data, amp=0, pos=[0,0], sigma=1):
 	# Solve using standard nearest neighbor and a white noise model
 	pmat     = toy.PmatNearest(pointing, shape)
 	omap     = toy.solve_white(data, pmat)
@@ -94,6 +110,10 @@ def run_2d(prefix, shape, pointing, data):
 	omap     = toy.solve_cg_mask_persamp(data, pmat, mask, nmat)
 	dump_map(prefix + "_2d_corr_srcsamp_map.npy", data, omap, pmat, pmat)
 
+	# source cutting
+	omap     = toy.solve_cg_mask(data, pmat, mask, nmat)
+	dump_map(prefix + "_2d_corr_srccut_map.npy", data, omap, pmat, pmat)
+
 	# Iterative linear (approximation to proper linear)
 	omap     = toy.solve_iterative(data, pmat, pmat_lin, nmat)
 	dump_map(prefix + "_2d_corr_itlin_map.npy", data, omap, pmat_lin, pmat)
@@ -101,6 +121,12 @@ def run_2d(prefix, shape, pointing, data):
 	# Iterative cubic (approximation to proper cubic)
 	omap     = toy.solve_iterative(data, pmat, pmat_cubic, nmat)
 	dump_map(prefix + "_2d_corr_itcubic_map.npy", data, omap, pmat_cubic, pmat)
+
+	# source subtraction
+	signal_src= toy.build_signal_src(pointing, pos, amp=amp, sigma=sigma)
+	omap     = toy.solve_cg(data-signal_src, pmat, nmat)
+	omap    += toy.solve_white(signal_src, pmat)
+	dump_map(prefix + "_2d_corr_srcsub_map.npy", data, omap, pmat, pmat)
 
 np.random.seed(1)
 toy.mpl_setdefault("planck")
@@ -130,36 +156,36 @@ signal_cmb  = toy.build_signal_from_map(pointing, cmb_highres, nsub=nsub)
 nmat        = toy.NmatOneoverf(signal_src.shape[-1], nsub=nsub)
 noise       = nmat.sim(*signal_src.shape)
 
-run_2d("examples/src", shape, pointing, signal_src)
-run_2d("examples/cmb", shape, pointing, signal_cmb)
-run_2d("examples/src_cmb", shape, pointing, signal_src+signal_cmb)
+run_2d("examples/src", shape, pointing, signal_src, pos=pos, amp=amp, sigma=sigma)
+run_2d("examples/cmb", shape, pointing, signal_cmb, pos=pos)
+run_2d("examples/src_cmb", shape, pointing, signal_src+signal_cmb, pos=pos, amp=amp, sigma=sigma)
 
-run_2d("examples/src_noise", shape, pointing, signal_src+noise)
-run_2d("examples/cmb_noise", shape, pointing, signal_cmb+noise)
-run_2d("examples/src_cmb_noise", shape, pointing, signal_src+signal_cmb+noise)
+run_2d("examples/src_noise", shape, pointing, signal_src+noise, pos=pos, amp=amp, sigma=sigma)
+run_2d("examples/cmb_noise", shape, pointing, signal_cmb+noise, pos=pos)
+run_2d("examples/src_cmb_noise", shape, pointing, signal_src+signal_cmb+noise, pos=pos, amp=amp, sigma=sigma)
 
 # Pointing offset
 offsets = np.array([[0,0],[1,1]])[:,None,:]/2**0.5 * 1e-2
 signal_src = toy.build_signal_src(pointing+offsets, pos, amp=amp, sigma=sigma)
 signal_cmb = toy.build_signal_from_map(pointing+offsets, cmb_highres, nsub=nsub)
 
-run_2d("examples/src_ptoff", shape, pointing, signal_src)
-run_2d("examples/cmb_ptoff", shape, pointing, signal_cmb)
-run_2d("examples/src_cmb_ptoff", shape, pointing, signal_src+signal_cmb)
+run_2d("examples/src_ptoff", shape, pointing, signal_src, pos=pos, amp=amp, sigma=sigma)
+run_2d("examples/cmb_ptoff", shape, pointing, signal_cmb, pos=pos)
+run_2d("examples/src_cmb_ptoff", shape, pointing, signal_src+signal_cmb, pos=pos, amp=amp, sigma=sigma)
 
-run_2d("examples/src_noise_ptoff", shape, pointing, signal_src+noise)
-run_2d("examples/cmb_noise_ptoff", shape, pointing, signal_cmb+noise)
-run_2d("examples/src_cmb_noise_ptoff", shape, pointing, signal_src+signal_cmb+noise)
+run_2d("examples/src_noise_ptoff", shape, pointing, signal_src+noise, pos=pos, amp=amp, sigma=sigma)
+run_2d("examples/cmb_noise_ptoff", shape, pointing, signal_cmb+noise, pos=pos)
+run_2d("examples/src_cmb_noise_ptoff", shape, pointing, signal_src+signal_cmb+noise, pos=pos, amp=amp, sigma=sigma)
 
 # Amplitude variability
 gains = np.array([0.995,1.005])[:,None]
 signal_src = toy.build_signal_src(pointing, pos, amp=amp, sigma=sigma)*gains
 signal_cmb = toy.build_signal_from_map(pointing, cmb_highres, nsub=nsub)*gains
 
-run_2d("examples/src_gain", shape, pointing, signal_src)
-run_2d("examples/cmb_gain", shape, pointing, signal_cmb)
-run_2d("examples/src_cmb_gain", shape, pointing, signal_src+signal_cmb)
+run_2d("examples/src_gain", shape, pointing, signal_src, pos=pos, amp=amp, sigma=sigma)
+run_2d("examples/cmb_gain", shape, pointing, signal_cmb, pos=pos)
+run_2d("examples/src_cmb_gain", shape, pointing, signal_src+signal_cmb, pos=pos, amp=amp, sigma=sigma)
 
-run_2d("examples/src_noise_gain", shape, pointing, signal_src+noise)
-run_2d("examples/cmb_noise_gain", shape, pointing, signal_cmb+noise)
-run_2d("examples/src_cmb_noise_gain", shape, pointing, signal_src+signal_cmb+noise)
+run_2d("examples/src_noise_gain", shape, pointing, signal_src+noise, pos=pos, amp=amp, sigma=sigma)
+run_2d("examples/cmb_noise_gain", shape, pointing, signal_cmb+noise, pos=pos)
+run_2d("examples/src_cmb_noise_gain", shape, pointing, signal_src+signal_cmb+noise, pos=pos, amp=amp, sigma=sigma)

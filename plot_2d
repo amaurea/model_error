@@ -2,4 +2,4 @@
 dir=${1:-examples}
 python npy2fits.py "$dir"/*2d*.npy
 OMP_NUM_THREADS=1 enplot -vgr 4 --op 'm-m[:,None,None,0,0]' "$dir"/src*.fits
-OMP_NUM_THREADS=1 enplot -vgr 4:0.1 --op 'm-median(m,(1,2))[:,None,None]' "$dir"/cmb*.fits
+OMP_NUM_THREADS=1 enplot -vgr 4:0.1 --op 'm-nanmedian(m,(1,2))[:,None,None]' "$dir"/cmb*.fits
