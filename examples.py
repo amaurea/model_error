@@ -1,17 +1,17 @@
 import numpy as np, toy, os, sys
 from matplotlib import pyplot
 
-def get_outside(map, R):
+def get_outside(map, rmin, rmax):
 	pos  = np.array(map.shape)/2
 	r2   = np.sum((np.mgrid[:map.shape[0],:map.shape[1]]-pos[:,None,None])**2,0)
-	mask = r2>R**2
+	mask = (r2 > rmin**2)&(r2 < rmax**2)
 	return map[mask]
 
 def demean(m): return m - 0.25*(m[0,0]+m[-1,0]+m[0,-1]+m[-1,-1])
 
-def measure_leakage(map, dmap, R=0):
+def measure_leakage(map, dmap, rmin=0, rmax=100):
 	map, dmap = demean(map), demean(dmap)
-	return np.max(np.abs(get_outside(dmap, R)))/np.max(np.abs(map))
+	return np.max(np.abs(get_outside(dmap, rmin, rmax)))/np.max(np.abs(map))
 
 def dump_tod(fname, data, map, pmat):
 	ndim  = pointing.shape[-1]
@@ -20,15 +20,18 @@ def dump_tod(fname, data, map, pmat):
 	np.save(fname, np.concatenate([
 		pointing.reshape(-1,ndim), data.reshape(-1,1), model.reshape(-1,1)],-1))
 
-def dump_map(fname, data, map, pmat, pwhite):
+def dump_map(fname, data, map, pmat, pwhite, pbase=None):
+	if pbase is None: pbase = pwhite
 	model = pmat.map2tod(map)
 	rmap  = toy.solve_white((data-model)**2, pwhite)**0.5
-	dmap  = map - toy.solve_white(data, pwhite)
+	dmap  = map - toy.solve_iterative(data, pbase, pbase, toy.NmatIdentity())
 	print("Writing %s" % fname)
 	np.save(fname, np.array([map, rmap, dmap]))
-	leak_full = measure_leakage(map, dmap)
-	leak_far  = measure_leakage(map, dmap, 8)
-	print("Leakage %-50s %15.7e %15.7e" % (fname, leak_full, leak_far))
+	leak_src  = measure_leakage(map, dmap, 0, 5)
+	leak_near = measure_leakage(map, dmap, 5,10)
+	leak_far  = measure_leakage(map, dmap,10,90)
+	leak_std  = np.std(dmap)/np.std(map)
+	print("Leakage %-50s %14.7e %14.7e %14.7e %14.7e" % (fname, leak_src, leak_near, leak_far, leak_std))
 	sys.stdout.flush()
 
 def run_1d(prefix, shape, pointing, data):
@@ -85,48 +88,48 @@ def run_2d(prefix, shape, pointing, data, amp=0, pos=[0,0], sigma=1):
 	omap     = toy.solve_white(data, pmat)
 	dump_map(prefix + "_2d_uncorr_map.npy", data, omap, pmat, pmat)
 
-	# Correlated noise model
-	nmat     = toy.NmatOneoverf(data.shape[-1], nsub=nsub)
-	omap     = toy.solve_cg(data, pmat, nmat)
-	model    = pmat.map2tod(omap)
-	dump_map(prefix + "_2d_corr_map.npy", data, omap, pmat, pmat)
+	## Correlated noise model
+	#nmat     = toy.NmatOneoverf(data.shape[-1], nsub=nsub)
+	#omap     = toy.solve_cg(data, pmat, nmat)
+	#model    = pmat.map2tod(omap)
+	#dump_map(prefix + "_2d_corr_map.npy", data, omap, pmat, pmat)
 
 	# bilinear interpolation
 	pmat_lin = toy.PmatSplinePixell(pointing, shape, order=1)
 	omap     = toy.solve_cg(data, pmat_lin, nmat)
-	dump_map(prefix + "_2d_corr_lin_map.npy", data, omap, pmat_lin, pmat)
+	dump_map(prefix + "_2d_corr_lin_map.npy", data, omap, pmat_lin, pmat, pmat_lin)
 
 	# bicubic interpolation
 	pmat_cubic = toy.PmatSplinePixell(pointing, shape, order=3)
 	omap     = toy.solve_cg(data, pmat_cubic, nmat)
-	dump_map(prefix + "_2d_corr_cubic_map.npy", data, omap, pmat_cubic, pmat)
+	dump_map(prefix + "_2d_corr_cubic_map.npy", data, omap, pmat_cubic, pmat, pmat_cubic)
 
-	# local white model
-	mask     = toy.build_mask_disk(pointing, pos, 5)
-	omap     = toy.solve_mask_white(data, pmat, mask, nmat)
-	dump_map(prefix + "_2d_corr_srcwhite_map.npy", data, omap, pmat, pmat)
+	## local white model
+	#mask     = toy.build_mask_disk(pointing, pos, 5)
+	#omap     = toy.solve_mask_white(data, pmat, mask, nmat)
+	#dump_map(prefix + "_2d_corr_srcwhite_map.npy", data, omap, pmat, pmat)
 
-	# local extra degrees of freedom
-	omap     = toy.solve_cg_mask_persamp(data, pmat, mask, nmat)
-	dump_map(prefix + "_2d_corr_srcsamp_map.npy", data, omap, pmat, pmat)
+	## local extra degrees of freedom
+	#omap     = toy.solve_cg_mask_persamp(data, pmat, mask, nmat)
+	#dump_map(prefix + "_2d_corr_srcsamp_map.npy", data, omap, pmat, pmat)
 
-	# source cutting
-	omap     = toy.solve_cg_mask(data, pmat, mask, nmat)
-	dump_map(prefix + "_2d_corr_srccut_map.npy", data, omap, pmat, pmat)
+	## source cutting
+	#omap     = toy.solve_cg_mask(data, pmat, mask, nmat)
+	#dump_map(prefix + "_2d_corr_srccut_map.npy", data, omap, pmat, pmat)
 
 	# Iterative linear (approximation to proper linear)
 	omap     = toy.solve_iterative(data, pmat, pmat_lin, nmat)
-	dump_map(prefix + "_2d_corr_itlin_map.npy", data, omap, pmat_lin, pmat)
+	dump_map(prefix + "_2d_corr_itlin_map.npy", data, omap, pmat_lin, pmat, pmat_lin)
 
 	# Iterative cubic (approximation to proper cubic)
 	omap     = toy.solve_iterative(data, pmat, pmat_cubic, nmat)
-	dump_map(prefix + "_2d_corr_itcubic_map.npy", data, omap, pmat_cubic, pmat)
+	dump_map(prefix + "_2d_corr_itcubic_map.npy", data, omap, pmat_cubic, pmat, pmat_cubic)
 
-	# source subtraction
-	signal_src= toy.build_signal_src(pointing, pos, amp=amp, sigma=sigma)
-	omap     = toy.solve_cg(data-signal_src, pmat, nmat)
-	omap    += toy.solve_white(signal_src, pmat)
-	dump_map(prefix + "_2d_corr_srcsub_map.npy", data, omap, pmat, pmat)
+	## source subtraction
+	#signal_src= toy.build_signal_src(pointing, pos, amp=amp, sigma=sigma)
+	#omap     = toy.solve_cg(data-signal_src, pmat, nmat)
+	#omap    += toy.solve_white(signal_src, pmat)
+	#dump_map(prefix + "_2d_corr_srcsub_map.npy", data, omap, pmat, pmat)
 
 np.random.seed(1)
 toy.mpl_setdefault("planck")

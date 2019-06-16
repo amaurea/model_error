@@ -291,7 +291,7 @@ def expand_samps(samps, mask):
 	tod[mask] = samps
 	return tod
 
-def fill_mask_constrained(data, mask, nmat, known_tol=1.0, cg_tol=1e-9):
+def fill_mask_constrained(data, mask, nmat, known_tol=100, cg_tol=1e-11):
 	"""Given data[ntod,nsamp] and a boolean mask of the same shape
 	selecting some of those samples, return a new array where the
 	selected samples have been replaced by the ML prediction based

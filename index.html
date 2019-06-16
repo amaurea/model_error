@@ -17,7 +17,9 @@
 			table  { table-layout: fixed; width: 100%; }
 			table.pix img { image-rendering: optimizeSpeed; }
 			table.text td { text-align: center; }
+			table.fit     { table-layout: auto; }
 			td.good { font-weight: bold; color: green; }
+			td.medi { font-weight: bold; color: orange; }
 			td.bad  { font-weight: bold; color: red;   }
 			td.neutral {  }
 			td.mixed  { font-weight: bold; color: #05a;   }
@@ -318,8 +320,8 @@
 
 		<h3>3.3. Source cutting</h3>
 		<p>Perhaps the conceptually simplest way to avoid model errors from small problematic regions
-		of the sky is to simply exclude samples hitting those regions from the mapping process. But in
-		practice most correlated noise models are best represented in fourier space, and fast fourier
+		of the sky is to simply exclude samples hitting those regions from the mapping process. In
+		practice, however, most correlated noise models are best represented in fourier space, and fast fourier
 		transforms cannot easily handle missing samples. Hence, simply dropping those samples isn't
 		straightforward. A standard trick that effectively achieves the same thing is to modify the
 		pointing matrix to give the bad samples a dummy degree of freedom each instead of pointing
@@ -428,7 +430,7 @@
 					<td class=neutral>standard</td>
 				</tr>
 				<tr>
-					<th>new?</th>
+					<th>new</th>
 					<td class=neutral>no</td>
 					<td class=mixed>yes</td>
 					<td class=mixed>yes</td>
@@ -449,7 +451,7 @@
 				standard map-making. Iterative linear/cubic mapmaking naively have a cost factor of
 				$N_\textrm{iter}$, but in practice this can usually be avoided. <dfn>pixwin</dfn>:
 				The pixel window the method produces. Higher-order interpolation methods results in
-				a "smaller" (closer to unity) pixel window. <dfn>new?</dfn>: Whether this is a new
+				a "smaller" (closer to unity) pixel window. <dfn>new</dfn>: Whether this is a new
 				method or not. Those marked "yes" are, to my knowledge, not previously published.
 			</figcaption>
 		</figure>
@@ -508,14 +510,37 @@
 		<h2>5. Results</h2>
 		<p>Figure 3 shows maximum likelihood maps for each method for a strong point source.
 		In the noise free case (top 3rd of the figure) standard nearest-neighbor mapmaking
-		with an uncorrelated noise model (first column) results in no leakage as espected, whether in the
+		with an uncorrelated noise model (first column) results in no leakage as expected, whether in the
 		presence of normal sub-pixel signal, gain errors or pointing errors. However, in the presence
-		of realistic correlated noise this method is extremely suboptimal, resulting in a map completely
+		of realistic correlated noise (mid 3rd of the figure) this method is extremely suboptimal,
+		resulting in a map completely
 		dominated by large-scale noise.</p>
 		<p>Standard map-making with a correlated noise model (second column)
 		downweights the noise correctly, but causes an X-shaped pattern of leakage around the
-		source
-		</p>
+		source, regardless of whether the noise is actually present. This only gets worse in
+		the presence of gain and pointing errors. The size of the leakage relative to
+		the peak source amplitude is shown in table 2, and is typically of order 3e-4 for
+		this choice of beam, pixel size and noise model. While
+		this is small relative to the source itself, it might be much brighter than any
+		surrounding CMB for a sufficiently bright source.</p>
+		<p>Full and iterative linear and bicubic interpolation all behave similarly.
+		In the absence of gain and pointing errors they provide a moderate leakage reduction,
+		typically by a factor of 3-10, but varying by method and distance from the source.
+		The computationally heaviest method, bicubic interpolation, provides the best reduction (about a factor
+		of 20) of these at large distance, but as we saw in figure 2, this comes at the cost of making
+		things worse near the source.
+		The iterative iterative approximation to bicubic interpolation might be the best compromise
+		between low-range and short-range leakage, reducing both to $&lt;0.4 \cdot 10^{-4}$.
+		However, since these methods only target sub-pixel
+		errors, it comes as no surprise that they do not help at all with data inconsistencies
+		like gain and pointing errors, where the X returns in full force.</p>
+		<p>Source subtraction completely eliminates the artifacts in the ideal case, but
+		performs no better than than the blind interpolation methods in the presence of gain
+		and pointing errors. The other targeted methods fare better:
+		Source cutting avoids artifacts even for inconsistent data, at the cost of a hole in the map,
+		while white source mapping and source sub-sampling avoid both these problems,
+		eliminating artifacts even in the presence of inconsistent data while still providing
+		a map of the source.</p>
 
 		<figure class=wide>
 			<table class=pix>
@@ -689,6 +714,145 @@
 			</figcaption>
 		</figure>
 
+		<!--
+		<p>Table 2 gives a more quantitative summary of the amount of leakage from each of these
+		methods for the noiseless point source case, corresponding to the top 3rd of Figure 3.
+		The leakage is measured in two regions: near the source (but not inside it), defined as
+		the area between 5 to 10 pixels from the source center; and far from the source, defined
+		as the area more than 10 pixels away. The leakage is measured as the highest absolute value
+		of the map in each region, divided by the peak source amplitude.</p>
+		<p>For the beam, pixel size and nosie model used here, subpixel errors result in a relative
+		leakage of $\sim 3 \cdot 10^{-4}$. Higher order interpolation in the pointing matrix reduces
+		this to $0.18 \cdot 10^{-4}$ to $1.79 \cdot 10^{-4}$ depending on the method and distance, with
+		the iterative bicubic approximation giving relatively good performance 
+
+		these results.</p>
+		-->
+
+		<figure class=wide>
+			<table class="text fit">
+				<tr>
+					<th></th>
+					<th>standard</th>
+					<th>it.lin</th>
+					<th>it.cubic</th>
+					<th>bilin</th>
+					<th>bicubic</th>
+					<th>srcsub</th>
+					<th>srccut</th>
+					<th>srcwhite</th>
+					<th>srcsamp</th>
+				</tr>
+				<tr>
+					<th>near</th>
+					<td class=bad >0.866</td>
+					<td class=medi>0.143</td>
+					<td class=medi>0.270</td>
+					<td class=medi>0.172</td>
+					<td class=bad >1.776</td>
+					<td class=good>0.000</td>
+					<td class=good>0.000</td>
+					<td class=good>0.000</td>
+					<td class=good>0.000</td>
+				</tr>
+				<tr>
+					<th>far</th>
+					<td class=bad >3.520</td>
+					<td class=bad >1.146</td>
+					<td class=medi>0.392</td>
+					<td class=bad >0.889</td>
+					<td class=medi>0.179</td>
+					<td class=good>0.000</td>
+					<td class=good>0.000</td>
+					<td class=good>0.000</td>
+					<td class=good>0.000</td>
+				</tr>
+				<tr>
+					<th>near + pt.</th>
+					<td class=bad >2.542</td>
+					<td class=bad >1.966</td>
+					<td class=bad >2.057</td>
+					<td class=bad >2.015</td>
+					<td class=bad >3.613</td>
+					<td class=bad >1.910</td>
+					<td class=good>0.000</td>
+					<td class=good>0.000</td>
+					<td class=good>0.000</td>
+				</tr>
+				<tr>
+					<th>far + pt.</th>
+					<td class=bad >3.605</td>
+					<td class=bad >1.433</td>
+					<td class=bad >1.398</td>
+					<td class=bad >1.439</td>
+					<td class=bad >1.493</td>
+					<td class=bad >1.440</td>
+					<td class=good>0.000</td>
+					<td class=good>0.000</td>
+					<td class=good>0.000</td>
+				</tr>
+				<tr>
+					<th>near + gain</th>
+					<td class=bad >5.665</td>
+					<td class=bad >4.593</td>
+					<td class=bad >4.928</td>
+					<td class=bad >4.605</td>
+					<td class=bad >6.424</td>
+					<td class=bad >4.799</td>
+					<td class=good>0.000</td>
+					<td class=good>0.000</td>
+					<td class=good>0.000</td>
+				</tr>
+				<tr>
+					<th>far + gain</th>
+					<td class=bad >3.990</td>
+					<td class=bad >3.360</td>
+					<td class=bad >3.515</td>
+					<td class=bad >3.350</td>
+					<td class=bad >3.589</td>
+					<td class=bad >3.620</td>
+					<td class=good>0.000</td>
+					<td class=good>0.000</td>
+					<td class=good>0.000</td>
+				</tr>
+			</table>
+			<figcaption>
+				<dfn>Table 2</dfn>: The maximum absolute value of the leakage from a point source
+				in units of 1e-4 of the peak amplitude, measured in two distance bins: <dfn>near</dfn>:
+				5-10 pixels from from the center (just outside the point where the beam becomes negligible),
+				and <dfn>far</dfn>: beyond 10 pixels from the center. For the beam, pixel size and noise model
+				used here, subpixel errors result in O(1e-4) leakage. Higher-order interpolation reduces this
+				by a factor of 0.5-20 depending on the distance and method (yes, in the worst case it makes it
+				2x worse near the source), while the targeted methods completely eliminate subpixel errors.
+				Once gain or pointing errors are added, only source cutting, white source mapping and
+				source sub-sampling provide any meaningful improvement (though this will depend on the
+				size of the errors chosen).
+			</figcaption>
+		</figure>
+
+		<p>Figure 4 shows maximum-likelihood maps, residual RMS and deviation from the uncorrelated
+		solution for each method for a smooth, CMB-like field. It doesn't really make sense to apply
+		the source-targeted methods when there is no source present, but I still include them with
+		a dummy point source with zero amplitude in the patch center to see how these methods interact
+		with the surrounding CMB.</p>
+		<p>With a smooth, low-dynamic range field like this, the leakage is small
+		enough that the maps are practically identical. From table 3 and the bottom
+		3rd of figure 4 we see that the leakage is typically more than 200 times smaller than the
+		signal itself, even in the presence of gain and pointing errors.</p>
+		<p>The exception is white
+		source mapping, which has X-shaped leakage at 3% of the signal strength.
+		This happens because the
+		maximum likelihood inpainting of the samples that hit the source is done independently
+		for the horizontal and vertical data set, which therefore end up disagreeing with
+		each other in this region. As we have seen before, such disagreement is interpreted
+		as noise, and spreads out by a noise correlation length. Like the X around strong
+		point sources, this too is a form of model error bias, but since it's sourced by
+		the CMB itself rather than a potentially very bright point source, it is never
+		more than a small fraction of the CMB. A 3%-level contamination in a small fraction
+		of the sky is too small to matter in most circumstances, but to be safe one can
+		always use source sub-sampling instead, which doesn't have this issue.
+		</p>
+
 		<figure class=wide>
 			<table class=pix>
 				<tr>
@@ -836,15 +1000,78 @@
 				</tr>
 			</table>
 			<figcaption>
-				<dfn>Figure 4</dfn>: Like figure 2, but for a noiseless CMB-like signal instead of
+				<dfn>Figure 4</dfn>: Like figure 3, but for a noiseless CMB-like signal instead of
 				a strong point source. <dfn>Top:</dfn> the resulting maps. <dfn>Middle</dfn>:
 				the root-mean-square of the residual (data-model) per pixel. <dfn>Bottom</dfn>:
-				The difference between each map and the standard uncorrelated case. The color
+				The difference between each map and its uncorrelated version. The color
 				range is &pm;4 in arbitrary units at the top and &pm;0.1 in the same units in
 				the middle and bottom. The small gain and pointing errors we simulate here have
 				almost no effect for low dynamic range fields like the CMB. The source-specific
 				methods assume a zero-amplitude source in the patch center, even though none is
 				actually present.
+			</figcaption>
+		</figure>
+
+		<figure class=wide>
+			<table class="text fit">
+				<tr>
+					<th></th>
+					<th>standard</th>
+					<th>it.lin</th>
+					<th>it.cubic</th>
+					<th>bilin</th>
+					<th>bicubic</th>
+					<th>srcsub</th>
+					<th>srccut</th>
+					<th>srcwhite</th>
+					<th>srcsamp</th>
+				</tr>
+				<tr>
+					<th>plain</th>
+					<td>36.59</td>
+					<td>21.48</td>
+					<td>12.70</td>
+					<td class=good> 5.03</td>
+					<td class=good> 0.88</td>
+					<td>36.59</td>
+					<td>36.59</td>
+					<td class=bad>274.90</td>
+					<td>36.81</td>
+				</tr>
+				<tr>
+					<th>pt. error</th>
+					<td>38.69</td>
+					<td>33.55</td>
+					<td>26.30</td>
+					<td>14.36</td>
+					<td>13.79</td>
+					<td>38.69</td>
+					<td>38.96</td>
+					<td class=bad>275.80</td>
+					<td>38.96</td>
+				</tr>
+				<tr>
+					<th>gain error</th>
+					<td>48.87</td>
+					<td>40.08</td>
+					<td>36.52</td>
+					<td>34.25</td>
+					<td>34.26</td>
+					<td>48.87</td>
+					<td>48.95</td>
+					<td class=bad>273.01</td>
+					<td>48.95</td>
+				</tr>
+			</table>
+			<figcaption>
+				<dfn>Table 3</dfn>: The standard deviation of the difference between a map made with a correlated
+				and uncorrelated noise model, in units 1e-4 of the standard deviation of the map itself, for each
+				mapmaking method, and for a smooth, noiseless CMB-like field. The fractional leakage is typically
+				O(4e-3). This is larger than in table 2 because every point is a source of leakage, not just a single
+				source, but since it is relative to the CMB instead of a bright point source, the amplitude is
+				negligible in absolute terms. The white noise mapping method is an outlier, with relative
+				error up to almost 3% of the signal itself, but since this is a source-targeted method this would
+				only happen near the targeted sources.
 			</figcaption>
 		</figure>
 	</body>
