@@ -24,14 +24,39 @@
 			td.neutral {  }
 			td.mixed  { font-weight: bold; color: #05a;   }
 			h1, h2, h3, h4, h5 { text-align: center; }
-			p, figcaption { text-align: justify; }
+			p, figcaption, li, .abstract { text-align: justify; }
 			figcaption { margin: 0.5em; }
 			tr.sub th { font-size: 70%; }
 			dfn { font-weight: bold; }
+			.authlist, .affil li { text-align: center; }
+			.author   { font-size: 120%; }
+			.afftag   { vertical-align: super; font-size: 70%; }
+			.affil    { list-style: none; }
+			div.abstract { margin-left: 5em; margin-right: 5em; font-size: 90%; }
 		</style>
 	</head>
 	<body>
 		<h1>How to avoid X'es around point sources in maximum likelihood CMB maps</h1>
+
+		<div class=authlist>
+			<span class=author>Sigurd Næss</span><span class=afftag>1</span>
+		</div>
+
+		<ul class=affil>
+			<li><span class=afftag>1</span> Center for Computational Astrophysics, Flatiron Institute</li>
+		</ul>
+
+		<div class=abstract>
+			The maximum likelihood estimator for CMB map-making is optimal and unbiased as long as
+			the data model is correct, but in practice it rarely is, with model errors including
+			sub-pixel structure and instrumental problems like time-variable gain and pointing errors.
+			In the presence of such errors, the solution is biased, with the local error in each pixel
+			leaking outwards along the scanning pattern by a noise correlation length. The most important
+			sources of such leakage are strong point sources, and for common scanning patterns the leakage
+			manifests as an X around each such source. I discuss why this happens, and present several
+			old and new methods for mitigating and/or eliminating this leakage, along with a small
+			stand-alone TOD simulator and map-maker in python that implements them.
+		</div>
 
 		<h2>1. Introduction</h2>
 		<p>CMB telescopes map the sky by scanning an array of detectors repeatedly across
@@ -91,7 +116,7 @@
 				</tr>
 			</table>
 			<figcaption>
-				<dfn>Figure 1</dfn>: A simulated data vector consisting of a noiseless scan through a smooth, gaussian profile,
+				<dfn>Figure 1</dfn>: A simulated data vector consisting of a noiseless scan through a smooth, Gaussian profile,
 				compared to its nearest-neighbor-pixellated maximum likelihood
 				model. <dfn>Left</dfn>: When an uncorrelated noise model is used ($N \propto I$)
 				the residual is large but stay in the pixel where they were sourced. This error can
@@ -152,14 +177,14 @@
     m[py2,px2] += vx2 * rx</code></pre>
 		<p>Bicubic spline interpolation is another large step up in complexity. See the appendix for details.</p>
 		<p>Figure 2 shows how these higher-order interpolation schemes perform for the same
-		1D gaussian simulation we considered in figure 1.</p>
+		1D Gaussian simulation we considered in figure 1.</p>
 		<figure class=wide>
 			<img src=examples/src_1d_highorder.svg></td>
 			<figcaption>
 				<dfn>Figure 2</dfn>: Comparison of the maximum-likelihood models for nearest neighbor,
 				linear and cubic interpolation in the response matrix for uncorrelated and correlated
 				noise models, for the same data as in figure 1. Linear and cubic interpolation fit the
-				central part of the profile much better than nearest neigbor, leading to lower discrepancy
+				central part of the profile much better than nearest neighbor, leading to lower discrepancy
 				between the data and model at high radius in the correlated case (solid curves).
 				But this situation is reversed for the uncorrelated
 				noise model (dashed curves). This happens because the linear and cubic models are inherently non-local,
@@ -167,7 +192,7 @@
 				get a better match in areas with strong signal.
 			</figcaption>
 		</figure>
-		<p>Both linear and cubic interpolation fit the peak of the gaussian much better than nearest neighbor,
+		<p>Both linear and cubic interpolation fit the peak of the Gaussian much better than nearest neighbor,
 		resulting in roughly 4 orders of magnitude lower spurious signal at high radius for the case with
 		a correlated noise model. However, they only reach this level at large radii. Before this, the
 		spurious signal is dominated by a new effect that was not present for nearest neighbor interpolation:
@@ -181,7 +206,7 @@
 		correlation length for the interpolation functions themselves, leading to a faster decay of
 		the ringing. For the example in figure 2, the sweet spot is linear interpolation.</p>
 		<p>Even better locality (at even higher cost) should be possible with an interpolation
-		function based on the actual point spread function of the instrument (cite wandelt here?).
+		function based on the actual point spread function of the instrument (cite Wandelt here?).
 		However, there are diminishing returns when reducing sub-pixel errors because there is another
 		class of model errors that if often much larger, as we shall see in section 3.</p>
 
@@ -189,7 +214,7 @@
 		<p>Since the response matrix often is the bottleneck in maximum-likelihood mapmaking,
 		it may be too expensive to make this step several times slower by using higher-order
 		mapmaking. A simple approximation that avoids most of this slowdown is to first make
-		a normal map using the fast, nearest-neigbhor response matrix, and then subtract this
+		a normal map using the fast, nearest-neighbor response matrix, and then subtract this
 		estimate of the sky from the time-ordered data using a bilinear or bicubic spline
 		response matrix. This process can be repeated if necessary, though in my tests there
 		was little point in doing more than 1-3 iterations.
@@ -200,7 +225,7 @@
 		Here $P$ is the standard nearest-neighbor response matrix and $\bar P$ is
 		the higher-order one we are approximating. Note that this iteration converges
 		on an <em>approximation</em> to the higher-order map, not the exact solution
-		we would have gotten by using $\bar P$ in the equaiton \ref{eq:mapmaking}.
+		we would have gotten by using $\bar P$ in the equation \ref{eq:mapmaking}.
 		However, as we shall see in the results section it does a pretty good job.</p>
 		<p>If one is already doing iterative mapmaking to avoid bias from
 		estimating the noise model $N$ from the full data $d$ rather than
@@ -208,7 +233,7 @@
 		can simply be done as a part of that, and will incur almost no extra cost.</p>
 		<p>Alternatively, if one is solving for each map using an iterative method
 		like preconditioned conjugate gradients (CG), then the small scales that are the
-		main source of subpixel error often converge much faster than the larger ones.
+		main source of sub-pixel error often converge much faster than the larger ones.
 		In this case only a few CG steps are needed for all but the last iteration
 		of equation \ref{eq:iterative}, again resulting in almost no overhead compared to
 		standard mapmaking.</p>
@@ -218,7 +243,7 @@
 		signal that sourced them, but it also bears noting that their amplitude was about
 		$10^4$ times lower than the source. For a smooth, low-contrast signal like the
 		cosmic microwave background, each pixel is contaminated by leakage from
-		other pixels in the vincinity, but since those other pixels have signal of similar
+		other pixels in the vicinity, but since those other pixels have signal of similar
 		amplitude but random phase, one can expect each pixel to only be contaminated at the
 		$10^{-4}$ level, which is negligible. Non-local model errors are therefore only
 		a concern when a strong, compact signal is close to a region of weaker signal. In
@@ -226,7 +251,7 @@
 		<p>High-order interpolation treats the whole sky the same, and has the advantage that it
 		can be done blindly, with no prior knowledge about which parts of the sky might
 		be important sources of leakage. This comes at a large performance
-		penalty, however. And as we have seen, the most acessible such methods, linear and and cubic spline
+		penalty, however. And as we have seen, the most accessible such methods, linear and cubic spline
 		interpolation, do not perfectly eliminate this bias.</p>
 		<p>If one does know the location
 		and amplitude of the bright point sources in the sky, however, a much simpler approach
@@ -268,15 +293,15 @@
 		rid of leakage, we just need to decouple the bright point sources from those correlations.
 		This suggests the following approach:</p>
 		<ol>
-			<li>Make a point source free set of samples $d'$ from by smoothly inpainting the samples in $d$
-				that hit the bright sources, ideally using maximum likelihood inpainting, but the quality of the
-				inpainting only matters for the optimality of the method - bad inpainting will not cause a bias.</li>
-			<li>Make a maximum-likelihood map $\hat m'$ of the inpainted tod using the full noise model.
+			<li>Make a point source free set of samples $d'$ from by smoothly in-painting the samples in $d$
+				that hit the bright sources, ideally using maximum likelihood in-painting, but the quality of the
+				in-painting only matters for the optimality of the method - bad in-painting will not cause a bias.</li>
+			<li>Make a maximum-likelihood map $\hat m'$ of the in-painted TOD using the full noise model.
 				\begin{align}
 				\hat m' &= (P^TN^{-1}P)^{-1}P^T N^{-1} d'
 				\end{align}
 			</li>
-			<li>If the inpainted regions were small compared to the noise correlation length, then
+			<li>If the in-painted regions were small compared to the noise correlation length, then
 				the missing signal $d-d'$ from the previous map will have approximately white noise,
 				so we can map these bothersome samples using a simple white noise model:
 				\begin{align}
@@ -318,10 +343,25 @@
 		solution away afterwards, but instead project them back into the final map using a white noise model.
 		cite something here too</p>
 
+		<h4>3.2.1. Why can't this just be applied everywhere?</h4>
+		<p>At this point one might wonder why one can't just put the whole sky in the mask, and
+		thus be immune to leakage everywhere. If one were to do this, there would be a degree of
+		freedom for every sample, so the solution would be free to just match all the raw samples
+		directly. That is, one would end up with $s = d$, up to degeneracies. The reprojection of
+		$s$ onto the sky in equation \ref{eq:jointsol} would therefore end up being just a standard
+		maximum-likelihood map with an uncorrelated noise model, which would be horribly suboptimal
+		in the presence of realistic noise.</p>
+		<p>Ultimately it's the constraint that multiple different
+		samples with multiple different scanning directions map to the same degree of freedom that
+		allows the correlated noise model to average the noise down. Lifting this constraint in small
+		regions, like source sub-sampling does, is OK as long as those regions are smaller than the
+		typical length scale of the correlated noise, but will be progressively less optimal
+		(more residual correlated noise inside the regions) as they grow beyond that.</p>
+
 		<h3>3.3. Source cutting</h3>
 		<p>Perhaps the conceptually simplest way to avoid model errors from small problematic regions
 		of the sky is to simply exclude samples hitting those regions from the mapping process. In
-		practice, however, most correlated noise models are best represented in fourier space, and fast fourier
+		practice, however, most correlated noise models are best represented in Fourier space, and fast Fourier
 		transforms cannot easily handle missing samples. Hence, simply dropping those samples isn't
 		straightforward. A standard trick that effectively achieves the same thing is to modify the
 		pointing matrix to give the bad samples a dummy degree of freedom each instead of pointing
@@ -340,7 +380,7 @@
 		<h3>3.4. Summary of the methods</h3>
 		<p>Table 1 shows a summary of the methods we will investigate. The ideal method would be
 		blind (no prior knowledge about which parts of the sky have strong signal),
-		and would handle both subpixel errors and inconsistency at low cost, but none of the methods
+		and would handle both sub-pixel errors and inconsistency at low cost, but none of the methods
 		tick all those boxes, and in particular none of the blind methods can handle inconsistency.</p>
 
 		<figure class=wide>
@@ -418,6 +458,18 @@
 					<td class=good>1</td>
 				</tr>
 				<tr>
+					<th>compl.</th>
+					<td class=good>v.low</td>
+					<td class=medi>high</td>
+					<td class=bad>v.high</td>
+					<td class=medi>high</td>
+					<td class=bad>v.high</td>
+					<td class=good>low</td>
+					<td class=good>low</td>
+					<td class=good>low</td>
+					<td class=good>low</td>
+				</tr>
+				<tr>
 					<th>pixwin</th>
 					<td class=neutral>standard</td>
 					<td class=mixed>small</td>
@@ -445,11 +497,13 @@
 			<figcaption>
 				<dfn>Table 1</dfn>: Summary of the methods discussed in this paper. The rows are: <dfn>blind</dfn>: Whether
 				the method can be used on the whole map with no prior knowledge of which regions have
-				large model errors; <dfn>subpix</dfn>: Whether the method targets subpixel errors;
+				large model errors; <dfn>subpix</dfn>: Whether the method targets sub-pixel errors;
 				<dfn>incon.</dfn>: Whether the method targets inconsistency errors like gain and pointing
 				errors; <dfn>cost</dfn>: A rough indication of time cost of the method, relative to
 				standard map-making. Iterative linear/cubic mapmaking naively have a cost factor of
-				$N_\textrm{iter}$, but in practice this can usually be avoided. <dfn>pixwin</dfn>:
+				$N_\textrm{iter}$, but in practice this can usually be avoided. <dfn>compl.</dfn>:
+				A rough indication of how complex the method is to implement. Somewhat subjective.
+				<dfn>pixwin</dfn>:
 				The pixel window the method produces. Higher-order interpolation methods results in
 				a "smaller" (closer to unity) pixel window. <dfn>new</dfn>: Whether this is a new
 				method or not. Those marked "yes" are, to my knowledge, not previously published.
@@ -473,7 +527,7 @@
 		pixel grid so that there are 3 x 3 samples per pixel per set. Using this setup I simulated
 		two signals:</p>
 		<ol>
-			<li>A gaussian point source with a beam standard deviation of 1 pixel and an
+			<li>A Gaussian point source with a beam standard deviation of 1 pixel and an
 		amplitude of $2\cdot 10^4$ (500 times higher than the color scale used in the plots in the
 		results section). This will be representative of e.g. a bright quasar.</li>
 			<li> A CMB-like field built by simulating a 1/l spectrum with an angular
@@ -516,7 +570,7 @@
 		resulting in a map completely
 		dominated by large-scale noise.</p>
 		<p>Standard map-making with a correlated noise model (second column)
-		downweights the noise correctly, but causes an X-shaped pattern of leakage around the
+		down-weights the noise correctly, but causes an X-shaped pattern of leakage around the
 		source, regardless of whether the noise is actually present. This only gets worse in
 		the presence of gain and pointing errors. The size of the leakage relative to
 		the peak source amplitude is shown in table 2, and is typically of order 3e-4 for
@@ -699,11 +753,11 @@
 				the vertical scanning pattern sees a 1% higher signal than the horizontal
 				scanning pattern; and <dfn>pt. error</dfn>: the horizontal scanning pattern
 				sees the signal offset by 0.01 pixel diagonally. The column headers refer to
-				the different mapmaking algorithms described in the text. The subheaders
+				the different mapmaking algorithms described in the text. The sub-headers
 				indicate whether a correlated or uncorrelated noise model was used. The
 				color range is &pm;$10^{-4}$ of the peak source amplitude.</p>
 				<!--<p>Standard nearest neighbor mapmaking results in a prominent X-shaped
-				subpixel errors
+				sub-pixel errors
 				following the scanning directions as soon as we turn on correlations in the
 				noise model. With the exception of the bicubic method, the position-independent
 				methods only modestly reduce these errors. Bicubic mapmaking greatly reduces
@@ -721,7 +775,7 @@
 		the area between 5 to 10 pixels from the source center; and far from the source, defined
 		as the area more than 10 pixels away. The leakage is measured as the highest absolute value
 		of the map in each region, divided by the peak source amplitude.</p>
-		<p>For the beam, pixel size and nosie model used here, subpixel errors result in a relative
+		<p>For the beam, pixel size and nosie model used here, sub-pixel errors result in a relative
 		leakage of $\sim 3 \cdot 10^{-4}$. Higher order interpolation in the pointing matrix reduces
 		this to $0.18 \cdot 10^{-4}$ to $1.79 \cdot 10^{-4}$ depending on the method and distance, with
 		the iterative bicubic approximation giving relatively good performance 
@@ -821,9 +875,9 @@
 				in units of 1e-4 of the peak amplitude, measured in two distance bins: <dfn>near</dfn>:
 				5-10 pixels from from the center (just outside the point where the beam becomes negligible),
 				and <dfn>far</dfn>: beyond 10 pixels from the center. For the beam, pixel size and noise model
-				used here, subpixel errors result in O(1e-4) leakage. Higher-order interpolation reduces this
+				used here, sub-pixel errors result in O(1e-4) leakage. Higher-order interpolation reduces this
 				by a factor of 0.5-20 depending on the distance and method (yes, in the worst case it makes it
-				2x worse near the source), while the targeted methods completely eliminate subpixel errors.
+				2x worse near the source), while the targeted methods completely eliminate sub-pixel errors.
 				Once gain or pointing errors are added, only source cutting, white source mapping and
 				source sub-sampling provide any meaningful improvement (though this will depend on the
 				size of the errors chosen).
@@ -842,7 +896,7 @@
 		<p>The exception is white
 		source mapping, which has X-shaped leakage at 3% of the signal strength.
 		This happens because the
-		maximum likelihood inpainting of the samples that hit the source is done independently
+		maximum likelihood in-painting of the samples that hit the source is done independently
 		for the horizontal and vertical data set, which therefore end up disagreeing with
 		each other in this region. As we have seen before, such disagreement is interpreted
 		as noise, and spreads out by a noise correlation length. Like the X around strong
@@ -1074,5 +1128,42 @@
 				only happen near the targeted sources.
 			</figcaption>
 		</figure>
+
+		<h2>6. Summary</h2>
+		<p>The model error mitigation strategies I have looked at can be grouped into two main classes:</p>
+		<ol>
+			<li>Higher-order interpolation map-making, which attempt to reduce sub-pixel errors by
+				making the model interpolate smoothly between pixel centers instead of using a step function.
+				These are blind, in that no prior knowledge of the sky is needed to apply them. They deal
+				moderately well with sub-pixel errors, typically reducing them by a factor of 3-20
+				(except very close to the source). They do help at all with inconsistency errors, however.</li>
+			<li>Source targeted methods, which target a pre-defined set of regions of the sky, typically
+				based on a point source database. With the exception of source subtraction, these can completely
+				eliminate leakage from the targeted objects both from sub-pixel errors and from inconsistency
+				errors.</li>
+		</ol>
+		<p>Given the high implementational complexity and limited improvement from higher-order map-making,
+		I do not think these methods are worth it, especially given the low impact of model errors outside
+		the neighborhood of strong point sources or similar high-contrast objects. Instead, I recommend
+		source targeted methods. Of the four source-targeted methods I considered, source sub-sampling
+		had the best performance, eliminating leakage even for inconsistency errors without leaving a
+		hole in the map (source cutting) or introducing any secondary leakage (white source mapping).
+		It is also quite straightforward to apply, sharing most of its implementation with a common technique
+		for handling per-sample data cuts.</p>
+
+		<h2>Acknowledgments</h2>
+		<p>The Atacama Cosmology Telescope data set provided the inspiration for this
+		paper. Flatiron Institute is supported by the Simons Foundation.</p>
+
+		<!--
+https://arxiv.org/abs/astro-ph/0702483 masks point sources and crossing points when building baselines in Planck destriper
+
+Planck      destriping
+Class       not ready
+BICEP       filter+bin, but with purification matrix
+ACT         ML
+QUIET       ML and filter+bin
+
+		-->
 	</body>
 </html>
