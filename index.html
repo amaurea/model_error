@@ -39,7 +39,7 @@
 		<h1>How to avoid X'es around point sources in maximum likelihood CMB maps</h1>
 
 		<div class=authlist>
-			<span class=author>Sigurd Næss</span><span class=afftag>1</span>
+			<span class=author>Sigurd K. Næss</span><span class=afftag>1</span>
 		</div>
 
 		<ul class=affil>
@@ -158,16 +158,16 @@
 		and each sample now interacts with the four closest pixels instead of just one.
 		The forward operation $d=Pm$ is now:</p>
 <pre><code>for i in range(nsamp):
-    py1, py2 = floor(y[i]), ceil(y[i])
-    px1, px2 = floor(x[i]), ceil(x[i])
+    py1, px1 = floor(y[i]), floor(x[i])
+    py2, px1 = py1+2, px1+1
     ry,  rx  = y[i]-py1, x[i]-px1
     vx1 = m[py1,px1] * (1-rx) + m[py1,px2] * rx
     vx2 = m[py2,px1] * (1-rx) + m[py2,px2] * rx
     d[i] = vx1 * (1-ry) + vx2 * ry</code></pre>
 		<p>The transpose operation $m=P^Td$ is:</p>
 <pre><code>for i in range(nsamp):
-    py1, py2 = floor(y[i]), ceil(y[i])
-    px1, px2 = floor(x[i]), ceil(x[i])
+    py1, px1 = floor(y[i]), floor(x[i])
+    py2, px1 = py1+2, px1+1
     ry,  rx  = y[i]-py1, x[i]-px1
     vx1 = d[i] * (1-ry)
     vx2 = d[i] * ry
@@ -1158,6 +1158,90 @@
 		<p>The Atacama Cosmology Telescope data set provided the inspiration for this
 		paper. I would like to thank Jon Sievers and Reijo Keskitalo for useful discussion
 		about prior art. Flatiron Institute is supported by the Simons Foundation.</p>
+
+		<h2>A. Bicubic spline interpolation</h2>
+		<p>The forward operation $d=Pm$ can be done in two parts. The first
+		is a convolution of the whole map by a spline pre-filter, followed by the
+		actual per-sample interpolation. In pseudo-python
+		(and ignoring boundary conditions and optimization) this is:</p>
+<pre><code>def interpol(m, y, x):
+  m = pre_filter(m)
+  d = eval(m, y, x)
+  return d
+
+def pre_filter(m):
+  m = m.copy()
+  ny, nx = m.shape
+  for py in range(ny): filter_1d(m[py,:])
+  for px in range(nx): filter_1d(m[:,px])
+  return m
+
+def filter_1d(a):
+  n = len(a)
+  p = sqrt(3)-2
+  for i in range(1,n):
+    a[i] += p*a[i-1]
+  a[n-1] *= -p/(1-p**2)
+  for i in range(n-2,-1,-1):
+    a[i] = p*(a[i+1]-a[i])
+
+def eval(m, y, x):
+  nsamp = len(y)
+  for i in range(nsamp):
+    py, px = floor(y[i]), floor(x[i])
+    # offset of point from floored position
+    ry, rx = y[i]-py, x[i]-px
+    wy, wx = get_weights(ry), get_weights(rx)
+    for jy in range(4):
+      for jx in range(4):
+        d[i] += wy[jy]*wx[jx]*m[py+jy-1,px+jx-1]
+  return d
+
+def get_weights(r):
+  for j in range(4):
+    # distance of each reference pixel from point
+    d = abs(r+j-1)
+    w[j] = (d*d*(d-2)*3+4)/6 if d < 1 else (2-d)**3/6
+  return w</code></pre>
+<p>The transpose operation $m = P^T d$ is obtained by reversing the data flow:</p>
+<pre><code>def interpol_trans(d, y, x):
+  m = eval_trans(d, y, x)
+  m = pre_filter_trans(m)
+  return m
+
+def pre_filter_trans(m):
+  m = m.copy()
+  ny, nx = m.shape
+  for px in range(nx): filter_1d_trans(m[:,px])
+  for py in range(ny): filter_1d_trans(m[py,:])
+  return m
+
+def filter_1d_trans(a):
+  n = len(a)
+  p = sqrt(3)-2
+  a[0] *= -p
+  for i in range(1, n-1):
+    a[i] = p*(a[i-1]-a[i])
+  a[n-1] -= a[n-2]
+  a[n-1] *= -p/(1-p**2)
+  for i in range(n-2,0,-1):
+    a[i] += p*a[i+1]
+
+def eval_trans(d, y, x):
+  nsamp = len(y)
+  m = zeros([ny,nx])
+  for i in range(nsamp):
+    py, px = floor(y[i]), floor(x[i])
+    # offset of point from floored position
+    ry, rx = y[i]-py, x[i]-px
+    wy, wx = get_weights(ry), get_weights(rx)
+    for jy in range(4):
+      for jx in range(4):
+        m[py+jy-1,px+jx-1] += wy[jy]*wx[jx]*d[i]
+  return m</code></pre>
+<p>The forward interpolation is available in <code>scipy.ndimage.map_coordinates</code>. The
+transposed case is available in <code>pixell.interpol.map_coordinates</code>. See its
+<a href=https://github.com/simonsobs/pixell>source code</a> for the full details.</p>
 
 		<!--
 https://arxiv.org/abs/astro-ph/0702483 masks point sources and crossing points when building baselines in Planck destriper
