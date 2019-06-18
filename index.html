@@ -59,9 +59,9 @@
 		</div>
 
 		<h2>1. Introduction</h2>
-		<p>CMB telescopes map the sky by scanning an array of detectors repeatedly across
+		<p>Cosmic Microwave Background (CMB) telescopes map the sky by scanning an array of detectors repeatedly across
 		the sky, resulting in a time-series of samples $d$. This process is usually
-		modeled via the linear equation</p>
+		modeled via the linear equation (<a href=https://arxiv.org/abs/astro-ph/9611130>Tegmark 1997</a>)</p>
 		\begin{align}
 		d &= Pm + n \label{eq:model} \tag{1}
 		\end{align}
@@ -70,7 +70,7 @@
 		$P$ is a response matrix that encodes where the telescope was pointing on the sky
 		when each sample was taken and how it responded to that. $n$ represents the
 		noise contribution to each sample, and is usually taken to be normal distributed
-		with some covariance $N$. The maximum likelihood solution to this equation is</p>
+		with some covariance $N$. The maximum likelihood solution to this equation is </p>
 		\begin{align}
 		\hat m &= (P^T N^{-1} P)^{-1} P^T N^{-1} d \label{eq:mapmaking} \tag{2}
 		\end{align}
@@ -255,7 +255,8 @@
 		interpolation, do not perfectly eliminate this bias.</p>
 		<p>If one does know the location
 		and amplitude of the bright point sources in the sky, however, a much simpler approach
-		is to simply subtract those point sources in the data before making the map. This
+		is to simply subtract those point sources in the data before making the map
+		(<a href=https://arxiv.org/abs/1208.0050>Dunner et al. 2012</a>). This
 		results in a map free of both the point sources (which can be useful in itself)
 		and the artifacts they would have sourced. If needed, the source model can then be
 		projected onto the sky using an uncorrelated noise model $W$ (for example $W=I$)
@@ -363,9 +364,9 @@
 		of the sky is to simply exclude samples hitting those regions from the mapping process. In
 		practice, however, most correlated noise models are best represented in Fourier space, and fast Fourier
 		transforms cannot easily handle missing samples. Hence, simply dropping those samples isn't
-		straightforward. A standard trick that effectively achieves the same thing is to modify the
+		straightforward. A trick that effectively achieves the same thing is to modify the
 		pointing matrix to give the bad samples a dummy degree of freedom each instead of pointing
-		them at the sky,
+		them at the sky (<a href=https://arxiv.org/abs/1208.0050>Dunner et al. 2012</a>),
 		\begin{align}
 		d &= \bar P m + Gs + n
 		\end{align}
@@ -518,7 +519,7 @@
 		nor optimized for speed, and only depends on <code>numpy</code> and <code>scipy</code> (with
 		the exception of bilinear and bicubic map-making which also depends on <code>pixell</code>.
 		That said, the techniques described here have also been implemented in
-		the full Atacama Cosmology Telescope mapmaker, and despite the simplicity of these test cases
+		the full Atacama Cosmology Telescope (ACT) mapmaker, and despite the simplicity of these test cases
 		the results are representative of running a real map-maker on real data.</p>
 		<h3>4.1. 2D simulations</h3>
 		<p>The main simulations use two sets of 243 x 243 equi-spaced samples in a square grid,
@@ -529,7 +530,8 @@
 		<ol>
 			<li>A Gaussian point source with a beam standard deviation of 1 pixel and an
 		amplitude of $2\cdot 10^4$ (500 times higher than the color scale used in the plots in the
-		results section). This will be representative of e.g. a bright quasar.</li>
+		results section). This will be representative of e.g. a bright quasar as seen by a high-resolution
+		CMB telesope like ACT.</li>
 			<li> A CMB-like field built by simulating a 1/l spectrum with an angular
 		resolution of 1 pixel and an RMS of 1. This will test whether model error
 		is a problem in the absence of bright sources.</p>
@@ -1132,28 +1134,30 @@
 		<h2>6. Summary</h2>
 		<p>The model error mitigation strategies I have looked at can be grouped into two main classes:</p>
 		<ol>
-			<li>Higher-order interpolation map-making, which attempt to reduce sub-pixel errors by
+			<li><dfn>Higher-order interpolation map-making</dfn>, which attempt to reduce sub-pixel errors by
 				making the model interpolate smoothly between pixel centers instead of using a step function.
 				These are blind, in that no prior knowledge of the sky is needed to apply them. They deal
 				moderately well with sub-pixel errors, typically reducing them by a factor of 3-20
-				(except very close to the source). They do help at all with inconsistency errors, however.</li>
-			<li>Source targeted methods, which target a pre-defined set of regions of the sky, typically
+				(except very close to the source). They do not help at all with inconsistency errors, however.
+				As far as I am aware, these are new to the literature.</li>
+			<li><dfn>Source targeted methods</dfn>, which target a pre-defined set of regions of the sky, typically
 				based on a point source database. With the exception of source subtraction, these can completely
 				eliminate leakage from the targeted objects both from sub-pixel errors and from inconsistency
-				errors.</li>
+				errors. Of these, source white mapping and source sub-sampling are new.</li>
 		</ol>
 		<p>Given the high implementational complexity and limited improvement from higher-order map-making,
 		I do not think these methods are worth it, especially given the low impact of model errors outside
 		the neighborhood of strong point sources or similar high-contrast objects. Instead, I recommend
-		source targeted methods. Of the four source-targeted methods I considered, source sub-sampling
-		had the best performance, eliminating leakage even for inconsistency errors without leaving a
-		hole in the map (source cutting) or introducing any secondary leakage (white source mapping).
-		It is also quite straightforward to apply, sharing most of its implementation with a common technique
-		for handling per-sample data cuts.</p>
+		source targeted methods, and in particular the <dfn>source sub-sampling</dfn> method. Of the four source-targeted
+		methods I considered, it has the best performance, eliminating leakage even for inconsistency errors
+		without leaving a hole in the map (as source cutting does) or introducing any secondary leakage
+		(as white source mapping does). It is also quite straightforward to apply, sharing most of its
+		implementation with an existing technique for handling per-sample data cuts.</p>
 
 		<h2>Acknowledgments</h2>
 		<p>The Atacama Cosmology Telescope data set provided the inspiration for this
-		paper. Flatiron Institute is supported by the Simons Foundation.</p>
+		paper. I would like to thank Jon Sievers and Reijo Keskitalo for useful discussion
+		about prior art. Flatiron Institute is supported by the Simons Foundation.</p>
 
 		<!--
 https://arxiv.org/abs/astro-ph/0702483 masks point sources and crossing points when building baselines in Planck destriper
