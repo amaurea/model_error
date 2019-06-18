@@ -120,7 +120,7 @@ at the edge of each pixel. This model and the resulting error is illustrated in 
 	\caption{A simulated data vector consisting of a noiseless scan through a smooth, Gaussian profile,
 		compared to its nearest-neighbor-pixellated maximum likelihood
 		model. \dfn{Left}: When an uncorrelated noise model is used ($N \propto I$)
-		the residual is large but stay in the pixel where they were sourced. This error can
+		the residual is large but stays in the pixel where they were sourced. This error can
 		be characterized as a simple pixel window. \dfn{Right}: When a correlated noise
 		model is used the residuals are still large, but are now spread out over a larger area
 		than the signal that sourced them.}
@@ -142,12 +142,12 @@ the mean value of the signal inside the area covered by the pixel, which is a st
 and useful thing to measure, and is not the sort of bias we are worried about here.
 
 If, on the other hand, $N$ is assumed to be correlated, then the presence of high
-"noise" (actually residual) in some samples
-will make it more likely that other samples within a noise correlation length will
+``noise'' (actually residual) in some samples
+will make the maximum likelihood prection for other samples within a noise correlation length
 have a similar value for the noise. For long correlation lengths this could affect samples
 many pixels away from the source of the residual. This is illustrated in the right panel
 of figure~\ref{fig:subpix1d}. Here large sub-pixel residuals in the center result in a non-zero expectation
-value for the noise at large distances. Given that the data has negligibly small values
+value for the noise at large distances. Given that the actual data has negligibly small values
 there, the best fit model must cancel the expected noise, resulting in a non-zero model
 extending far beyond the area with significant signal. Effectively the correlated
 noise model is causing local model errors to leak roughly a correlation length
@@ -282,8 +282,7 @@ and added back to the map.
 \hat m_\textrm{tot} &= \hat m_\textrm{srcfree} + (P^TW^{-1}P)^{-1}P^T W^{-1}\sum_i A_i B_i
 \end{align}
 Here $A_i$ is the amplitude of source $i$, and $B_i$ is a vector of each sample's
-response to an instrument beam centered on the position of that source. Cite
-something.
+response to an instrument beam centered on the position of that source.
 
 \section{Inconsistency}
 \label{sect:inconsistency}
@@ -291,6 +290,7 @@ Real telescopes don't have 100\% accurate pointing and gain, and even if they di
 sky is not static and unchanging. These effects mean the telescope effectively sees the
 sky jitter around slightly while varying in brightness. There is no room for this in
 eq.~\ref{eq:model} aside from the noise term $n$, so time-variable instrumental errors
+or variable point sources will
 lead to exactly the same sort of leakage as
 sub-pixel errors do. But since these errors are not sourced by sub-pixel structures,
 neither higher-order interpolation nor point source subtraction help here.
@@ -311,7 +311,7 @@ realistic correlated noise. However, we don't need everything to be uncorrelated
 rid of leakage, we just need to decouple the bright point sources from those correlations.
 This suggests the following approach:
 \begin{enumerate}
-	\item Make a point source free set of samples $d'$ from by smoothly in-painting the samples in $d$
+	\item Make a point source free set of samples $d'$ from $d$ by smoothly in-painting the samples in $d$
 		that hit the bright sources, ideally using maximum likelihood in-painting, but the quality of the
 		in-painting only matters for the optimality of the method - bad in-painting will not cause a bias.
 	\item Make a maximum-likelihood map $\hat m'$ of the in-painted TOD using the full noise model.
@@ -361,21 +361,21 @@ of freedom per cut sample. The only difference is that we here don't throw that 
 solution away afterwards, but instead project them back into the final map using a white noise model
 (see section~\ref{sect:source-cut}).
 
-\subsubsection{Why can't this just be applied everywhere?}
-At this point one might wonder why one can't just put the whole sky in the mask, and
-thus be immune to leakage everywhere. If one were to do this, there would be a degree of
-freedom for every sample, so the solution would be free to just match all the raw samples
-directly. That is, one would end up with $s = d$, up to degeneracies. The reprojection of
-$s$ onto the sky in equation~\ref{eq:jointsol} would therefore end up being just a standard
-maximum-likelihood map with an uncorrelated noise model, which would be horribly suboptimal
-in the presence of realistic noise.
-
-Ultimately it's the constraint that multiple different
-samples with multiple different scanning directions map to the same degree of freedom that
-allows the correlated noise model to average the noise down. Lifting this constraint in small
-regions, like source sub-sampling does, is OK as long as those regions are smaller than the
-typical length scale of the correlated noise, but will be progressively less optimal
-(more residual correlated noise inside the regions) as they grow beyond that.
+%\subsubsection{Why can't this just be applied everywhere?}
+%At this point one might wonder why one can't just put the whole sky in the mask, and
+%thus be immune to leakage everywhere. If one were to do this, there would be a degree of
+%freedom for every sample, so the solution would be free to just match all the raw samples
+%directly. That is, one would end up with $s = d$, up to degeneracies. The reprojection of
+%$s$ onto the sky in equation~\ref{eq:jointsol} would therefore end up being just a standard
+%maximum-likelihood map with an uncorrelated noise model, which would be horribly suboptimal
+%in the presence of realistic noise.
+%
+%Ultimately it's the constraint that multiple different
+%samples with multiple different scanning directions map to the same degree of freedom that
+%allows the correlated noise model to average the noise down. Lifting this constraint in small
+%regions, like source sub-sampling does, is OK as long as those regions are smaller than the
+%typical length scale of the correlated noise, but will be progressively less optimal
+%(more residual correlated noise inside the regions) as they grow beyond that.
 
 \subsection{Source cutting}
 \label{sect:source-cut}
@@ -515,8 +515,8 @@ tick all those boxes, and in particular none of the blind methods can handle inc
 		A rough indication of how complex the method is to implement. Somewhat subjective.
 		\dfn{pixwin}:
 		The pixel window the method produces. Higher-order interpolation methods results in
-		a "smaller" (closer to unity) pixel window.\dfn{new}: Whether this is a new
-		method or not. Those marked "yes" are, to my knowledge, not previously published.}
+		a ``smaller'' (closer to unity) pixel window.\dfn{new}: Whether this is a new
+		method or not. Those marked ``yes'' are, to my knowledge, not previously published.}
 	\label{tab:summary}
 \end{table}
 
@@ -538,7 +538,7 @@ the first ordered vertically and the second horizontally (the ordering matters f
 noise correlation structure). These are mapped onto an 81 x 81
 pixel grid so that there are 3 x 3 samples per pixel per set. Using this setup I simulated
 two signals:
-\begin{itemize}
+\begin{enumerate}
 	\item A Gaussian point source with a beam standard deviation of 1 pixel and an
 amplitude of $2\cdot 10^4$ (500 times higher than the color scale used in the plots in the
 results section). This will be representative of e.g. a bright quasar as seen by a high-resolution
@@ -546,29 +546,29 @@ CMB telesope like ACT.
 	\item A CMB-like field built by simulating a 1/l spectrum with an angular
 resolution of 1 pixel and an RMS of 1. This will test whether model error
 is a problem in the absence of bright sources.
-\end{itemize}
+\end{enumerate}
 I simulated two types of noise model:
-\begin{itemize}
+\begin{enumerate}
 	\item An uncorrelated noise model $N_\textrm{uncorr} = I$, representing the baseline case
 		where no leakage is expected.
 	\item A correlated noise model $N_\textrm{corr}(f_1,f_2) = \sigma^2 (1 + (f_1/f_\textrm{knee})^\alpha) \delta_{f_1,f_2}$. This is diagonal in Fourier space. $\alpha = -4$ represents an atmosphere-like steeply falling spectrum, meeting a noise floor with RMS $\sigma=1$ at the knee frequency $f_\textrm{knee} = 0.02$ in pixel units.
-\end{itemize}
+\end{enumerate}
 Becuase it is the non-local weighting implied by a correlated noise model that causes leakage,
 not the noise itself, one does not actually have to include the noise in the simulations.
 To maximize S/N in the figures most of the simulations are noise-free, but I also include some noisy
 simulations to show how effectively each method suppresses noise.
 
 I simulated 3 types of model errors:
-\begin{itemize}
+\begin{enumerate}
 	\item Sub-pixel signal was simulated generating the signals at higher resolution than the
 		output maps, as described above. This was included in every simulation.
 	\item Gain errors were simulated by decreasing/increasing the signal amplitude by
 	0.5\% for the vertical/horizontal data set, representing a total gain mismatch of
-	1\%. This was included in the simulations labeled "gain error".
+	1\%. This was included in the simulations labeled ``gain error''.
 	\item Pointing errors were simulated by offsetting the horizontal dataset by 0.01
 		pixels diagonally relative to the vertical dataset. This was includes in the
-	simulations labeled "pt. error".
-\end{itemize}
+	simulations labeled ``pt. error''.
+\end{enumerate}
 
 \subsection{1D simulations}
 I also produced as smaller number of 1-dimensional simulations for figure~\ref{fig:subpix1d} and figure~\ref{fig:highorder1d}.
@@ -810,10 +810,10 @@ but consisted of just a single scan of length 1100 samples which was mapped onto
 			\good{0.000}
 	\end{tabular}
 	\caption{The maximum absolute value of the leakage from a point source
-		in units of 1e-4 of the peak amplitude, measured in two distance bins: \dfn{near}:
+		in units of $10^{-4}$ of the peak amplitude, measured in two distance bins: \dfn{near}:
 		5-10 pixels from from the center (just outside the point where the beam becomes negligible),
 		and \dfn{far}: beyond 10 pixels from the center. For the beam, pixel size and noise model
-		used here, sub-pixel errors result in O(1e-4) leakage. Higher-order interpolation reduces this
+		used here, sub-pixel errors result in O($10^{-4}$) leakage. Higher-order interpolation reduces this
 		by a factor of 0.5-20 depending on the distance and method (yes, in the worst case it makes it
 		2x worse near the source), while the targeted methods completely eliminate sub-pixel errors.
 		Once gain or pointing errors are added, only source cutting, white source mapping and
@@ -852,7 +852,7 @@ errors, it comes as no surprise that they do not help at all with data inconsist
 like gain and pointing errors, where the X returns in full force.
 
 Source subtraction completely eliminates the artifacts in the ideal case, but
-performs no better than than the blind interpolation methods in the presence of gain
+performs no better than the blind interpolation methods in the presence of gain
 and pointing errors. The other targeted methods fare better:
 Source cutting avoids artifacts even for inconsistent data, at the cost of a hole in the map,
 while white source mapping and source sub-sampling avoid both these problems,
@@ -1092,18 +1092,19 @@ always use source sub-sampling instead, which doesn't have this issue.
 
 \section{Summary}
 The model error mitigation strategies I have looked at can be grouped into two main classes:
-\begin{itemize}
-	\item \dfn{Higher-order interpolation map-making}, which attempt to reduce sub-pixel errors by
+\begin{enumerate}
+	\item \dfn{Higher-order interpolation map-making}, which attempts to reduce sub-pixel errors by
 		making the model interpolate smoothly between pixel centers instead of using a step function.
 		These are blind, in that no prior knowledge of the sky is needed to apply them. They deal
 		moderately well with sub-pixel errors, typically reducing them by a factor of 3-20
+		in these tests
 		(except very close to the source). They do not help at all with inconsistency errors, however.
 		As far as I am aware, these are new to the literature.
 	\item \dfn{Source targeted methods}, which target a pre-defined set of regions of the sky, typically
 		based on a point source database. With the exception of source subtraction, these can completely
 		eliminate leakage from the targeted objects both from sub-pixel errors and from inconsistency
 		errors. Of these, source white mapping and source sub-sampling are new.
-\end{itemize}
+\end{enumerate}
 Given the high implementational complexity and limited improvement from higher-order map-making,
 I do not think these methods are worth it, especially given the low impact of model errors outside
 the neighborhood of strong point sources or similar high-contrast objects. Instead, I recommend
@@ -1128,8 +1129,9 @@ about prior art. Flatiron Institute is supported by the Simons Foundation.
 \section{Bicubic spline interpolation}
 The forward operation $d=Pm$ can be done in two parts. The first
 is a convolution of the whole map by a spline pre-filter, followed by the
-actual per-sample interpolation. In pseudo-python
-(and ignoring boundary conditions and optimization) this is:
+actual per-sample interpolation. This is implemented in \code{scipy.ndimage.map\_coordinates},
+and when specializing to 2 dimensions and ignoring boundary conditions and optimization,
+it can be written in pseudo-python like this:
 \begin{lstlisting}
 def interpol(m, y, x):
 	m = pre_filter(m)
@@ -1209,8 +1211,8 @@ def eval_trans(d, y, x):
 				m[py+jy-1,px+jx-1] += wy[jy]*wx[jx]*d[i]
 	return m
 \end{lstlisting}
-The forward interpolation is available in \code{scipy.ndimage.map\_coordinates}. The
-transposed case is available in \code{pixell.interpol.map\_coordinates}. See its source
+This transposed bicubic spline operation is missing from \code{sicpy}, but is
+available in \code{pixell.interpol.map\_coordinates}. See its source
 code for the full details (\url{https://github.com/simonsobs/pixell}).
 
 \end{document}

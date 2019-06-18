@@ -119,7 +119,7 @@
 				<dfn>Figure 1</dfn>: A simulated data vector consisting of a noiseless scan through a smooth, Gaussian profile,
 				compared to its nearest-neighbor-pixellated maximum likelihood
 				model. <dfn>Left</dfn>: When an uncorrelated noise model is used ($N \propto I$)
-				the residual is large but stay in the pixel where they were sourced. This error can
+				the residual is large but stays in the pixel where they were sourced. This error can
 				be characterized as a simple pixel window. <dfn>Right</dfn>: When a correlated noise
 				model is used the residuals are still large, but are now spread out over a larger area
 				than the signal that sourced them.
@@ -139,11 +139,11 @@
 		and useful thing to measure, and is not the sort of bias we are worried about here.</p>
 		<p>If, on the other hand, $N$ is assumed to be correlated, then the presence of high
 		"noise" (actually residual) in some samples
-		will make it more likely that other samples within a noise correlation length will
+		will make the maximum likelihood prection for other samples within a noise correlation length
 		have a similar value for the noise. For long correlation lengths this could affect samples
 		many pixels away from the source of the residual. This is illustrated in the right panel
 		of figure 1. Here large sub-pixel residuals in the center result in a non-zero expectation
-		value for the noise at large distances. Given that the data has negligibly small values
+		value for the noise at large distances. Given that the actual data has negligibly small values
 		there, the best fit model must cancel the expected noise, resulting in a non-zero model
 		extending far beyond the area with significant signal. Effectively the correlated
 		noise model is causing local model errors to leak roughly a correlation length
@@ -266,8 +266,7 @@
 		\hat m_\textrm{tot} &= \hat m_\textrm{srcfree} + (P^TW^{-1}P)^{-1}P^T W^{-1}\sum_i A_i B_i
 		\end{align}
 		Here $A_i$ is the amplitude of source $i$, and $B_i$ is a vector of each sample's
-		response to an instrument beam centered on the position of that source. Cite
-		something.
+		response to an instrument beam centered on the position of that source.
 		</p>
 
 		<h2>3. Inconsistency</h2>
@@ -275,6 +274,7 @@
 		sky is not static and unchanging. These effects mean the telescope effectively sees the
 		sky jitter around slightly while varying in brightness. There is no room for this in
 		eq. \ref{eq:model} aside from the noise term $n$, so time-variable instrumental errors
+		or variable point sources will
 		lead to exactly the same sort of leakage as
 		sub-pixel errors do. But since these errors are not sourced by sub-pixel structures,
 		neither higher-order interpolation nor point source subtraction help here.</p>
@@ -294,7 +294,7 @@
 		rid of leakage, we just need to decouple the bright point sources from those correlations.
 		This suggests the following approach:</p>
 		<ol>
-			<li>Make a point source free set of samples $d'$ from by smoothly in-painting the samples in $d$
+			<li>Make a point source free set of samples $d'$ from $d$ by smoothly in-painting the samples in $d$
 				that hit the bright sources, ideally using maximum likelihood in-painting, but the quality of the
 				in-painting only matters for the optimality of the method - bad in-painting will not cause a bias.</li>
 			<li>Make a maximum-likelihood map $\hat m'$ of the in-painted TOD using the full noise model.
@@ -344,6 +344,7 @@
 		solution away afterwards, but instead project them back into the final map using a white noise model.
 		cite something here too</p>
 
+		<!--
 		<h4>3.2.1. Why can't this just be applied everywhere?</h4>
 		<p>At this point one might wonder why one can't just put the whole sky in the mask, and
 		thus be immune to leakage everywhere. If one were to do this, there would be a degree of
@@ -358,6 +359,7 @@
 		regions, like source sub-sampling does, is OK as long as those regions are smaller than the
 		typical length scale of the correlated noise, but will be progressively less optimal
 		(more residual correlated noise inside the regions) as they grow beyond that.</p>
+		-->
 
 		<h3>3.3. Source cutting</h3>
 		<p>Perhaps the conceptually simplest way to avoid model errors from small problematic regions
@@ -591,7 +593,7 @@
 		errors, it comes as no surprise that they do not help at all with data inconsistencies
 		like gain and pointing errors, where the X returns in full force.</p>
 		<p>Source subtraction completely eliminates the artifacts in the ideal case, but
-		performs no better than than the blind interpolation methods in the presence of gain
+		performs no better than the blind interpolation methods in the presence of gain
 		and pointing errors. The other targeted methods fare better:
 		Source cutting avoids artifacts even for inconsistent data, at the cost of a hole in the map,
 		while white source mapping and source sub-sampling avoid both these problems,
@@ -1134,10 +1136,11 @@
 		<h2>6. Summary</h2>
 		<p>The model error mitigation strategies I have looked at can be grouped into two main classes:</p>
 		<ol>
-			<li><dfn>Higher-order interpolation map-making</dfn>, which attempt to reduce sub-pixel errors by
+			<li><dfn>Higher-order interpolation map-making</dfn>, which attempts to reduce sub-pixel errors by
 				making the model interpolate smoothly between pixel centers instead of using a step function.
 				These are blind, in that no prior knowledge of the sky is needed to apply them. They deal
 				moderately well with sub-pixel errors, typically reducing them by a factor of 3-20
+				in these tests
 				(except very close to the source). They do not help at all with inconsistency errors, however.
 				As far as I am aware, these are new to the literature.</li>
 			<li><dfn>Source targeted methods</dfn>, which target a pre-defined set of regions of the sky, typically
@@ -1162,8 +1165,9 @@
 		<h2>A. Bicubic spline interpolation</h2>
 		<p>The forward operation $d=Pm$ can be done in two parts. The first
 		is a convolution of the whole map by a spline pre-filter, followed by the
-		actual per-sample interpolation. In pseudo-python
-		(and ignoring boundary conditions and optimization) this is:</p>
+		actual per-sample interpolation. This is implemented in <code>scipy.ndimage.map_coordinates</code>,
+		and when specializing to 2 dimensions and ignoring boundary conditions and optimization,
+		it can be written in pseudo-python like this:</p>
 <pre><code>def interpol(m, y, x):
   m = pre_filter(m)
   d = eval(m, y, x)
@@ -1239,8 +1243,8 @@ def eval_trans(d, y, x):
       for jx in range(4):
         m[py+jy-1,px+jx-1] += wy[jy]*wx[jx]*d[i]
   return m</code></pre>
-<p>The forward interpolation is available in <code>scipy.ndimage.map_coordinates</code>. The
-transposed case is available in <code>pixell.interpol.map_coordinates</code>. See its
+<p>This transposed bicubic spline operation is missing from <code>sicpy</code>, but is
+available in <code>pixell.interpol.map_coordinates</code>. See its
 <a href=https://github.com/simonsobs/pixell>source code</a> for the full details.</p>
 
 		<!--
