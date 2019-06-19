@@ -55,7 +55,7 @@
 			sources of such leakage are strong point sources, and for common scanning patterns the leakage
 			manifests as an X around each such source. I discuss why this happens, and present several
 			old and new methods for mitigating and/or eliminating this leakage, along with a small
-			stand-alone TOD simulator and map-maker in python that implements them.
+			stand-alone TOD simulator and map-maker in Python that implements them.
 		</div>
 
 		<h2>1. Introduction</h2>
@@ -82,7 +82,7 @@
 		made using eq. \ref{eq:mapmaking} are biased to some extent, with the archetypical example
 		being lines extending away from bright point sources in the map, often in the shape of an X
 		(but this depends on the telescope's scanning pattern). The source of this bias is <em>model
-			error</em>: the failure of eq. \ref{eq:mapmaking} to accurately describe the real data; and
+			error</em>: the failure of eq. \ref{eq:model} to accurately describe the real data; and
 		in this paper I will describe the main types of model error in maximum-likelihood mapmaking, simulate their
 		effect and investigate several methods for mitigating or eliminating them.</p>
 
@@ -90,7 +90,16 @@
 		<p>The most obvious problem with eq. \ref{eq:model} is that it models the sky as a
 		finite vector of pixels, which will leave out any signal on scales smaller than the
 		pixel spacing. This is exacerbated by the canonical choice of a <em>nearest-neighbor</em> response
-		model in $P$. In this model, that the value of each sample is simply given by the value of the
+		model in $P$.
+		Every CMB map-maker I am aware of uses nearest-neighbor, including destripers like
+		MADAM (<a href=https://arxiv.org/abs/0907.0367>Keihänen et al. 2010</a>),
+		and SRoll (<a href=https://arxiv.org/abs/1807.06207>Planck Collaboration, 2018</a>),
+		filter+bin map-makers like those used in SPT (<a href=https://arxiv.org/abs/1111.7245>Schaffer et al. 2011</a>)
+		and BICEP (<a href=https://arxiv.org/abs/1403.3985>BICEP2 Collaboration, 2014</a>),
+		or the maximum likelihood map-makers
+		used in ACT (<a href=https://arxiv.org/abs/1610.02360>ACT Collaboration, 2017</a>)
+		and QUIET (<a href=https://arxiv.org/abs/1508.02778>Ruud et al. 2015</a>).
+	 In this model, the value of each sample is simply given by the value of the
 		closest pixel to it, regardless of how far away from the pixel center it is. This results
 		in a response matrix with a very simple structure: For each row (representing a sample)
 		a single element will be 1 (representing the pixel hit by that sample), and all others
@@ -156,7 +165,7 @@
 		are as far as I am aware unused in CMB map making.</p>
 		<p>Bilinear interpolation is considerably slower and more complicated than nearest neighbor,
 		and each sample now interacts with the four closest pixels instead of just one.
-		The forward operation $d=Pm$ is now:</p>
+		The forward operation $d=Pm$ is now (based on the implementaiton of <code>scipy.ndimage.map_coordinates</code>):</p>
 <pre><code>for i in range(nsamp):
     py1, px1 = floor(y[i]), floor(x[i])
     py2, px1 = py1+2, px1+1
@@ -164,7 +173,7 @@
     vx1 = m[py1,px1] * (1-rx) + m[py1,px2] * rx
     vx2 = m[py2,px1] * (1-rx) + m[py2,px2] * rx
     d[i] = vx1 * (1-ry) + vx2 * ry</code></pre>
-		<p>The transpose operation $m=P^Td$ is:</p>
+		<p>From this we can derive the The transpose operation $m=P^Td$ is:</p>
 <pre><code>for i in range(nsamp):
     py1, px1 = floor(y[i]), floor(x[i])
     py2, px1 = py1+2, px1+1
@@ -505,7 +514,7 @@
 				errors; <dfn>cost</dfn>: A rough indication of time cost of the method, relative to
 				standard map-making. Iterative linear/cubic mapmaking naively have a cost factor of
 				$N_\textrm{iter}$, but in practice this can usually be avoided. <dfn>compl.</dfn>:
-				A rough indication of how complex the method is to implement. Somewhat subjective.
+				A rough indication of how complex the method is to implement (this is somewhat subjective).
 				<dfn>pixwin</dfn>:
 				The pixel window the method produces. Higher-order interpolation methods results in
 				a "smaller" (closer to unity) pixel window. <dfn>new</dfn>: Whether this is a new
@@ -515,7 +524,7 @@
 
 		<h2>4. Simulations</h2>
 		<p>I wrote a <a href=https://raw.githubusercontent.com/amaurea/model_error/master/toy.py>minimal maximum-likelihood
-		mapmaking library</a> in about 300 lines of python to demonstrate the performance of these
+		mapmaking library</a> in about 300 lines of Python to demonstrate the performance of these
 		methods, along with <a href=https://raw.githubusercontent.com/amaurea/model_error/master/examples.py>a driver script</a>
 		that generates the plots in this paper. The library emphasizes simplicity and is neither general
 		nor optimized for speed, and only depends on <code>numpy</code> and <code>scipy</code> (with
@@ -534,7 +543,7 @@
 		amplitude of $2\cdot 10^4$ (500 times higher than the color scale used in the plots in the
 		results section). This will be representative of e.g. a bright quasar as seen by a high-resolution
 		CMB telesope like ACT.</li>
-			<li> A CMB-like field built by simulating a 1/l spectrum with an angular
+			<li> A CMB-like field built by simulating a $1/l$ spectrum with an angular
 		resolution of 1 pixel and an RMS of 1. This will test whether model error
 		is a problem in the absence of bright sources.</p>
 		</ol>
@@ -587,7 +596,7 @@
 		The computationally heaviest method, bicubic interpolation, provides the best reduction (about a factor
 		of 20) of these at large distance, but as we saw in figure 2, this comes at the cost of making
 		things worse near the source.
-		The iterative iterative approximation to bicubic interpolation might be the best compromise
+		The iterative approximation to bicubic interpolation might be the best compromise
 		between low-range and short-range leakage, reducing both to $&lt;0.4 \cdot 10^{-4}$.
 		However, since these methods only target sub-pixel
 		errors, it comes as no surprise that they do not help at all with data inconsistencies
@@ -1167,7 +1176,7 @@
 		is a convolution of the whole map by a spline pre-filter, followed by the
 		actual per-sample interpolation. This is implemented in <code>scipy.ndimage.map_coordinates</code>,
 		and when specializing to 2 dimensions and ignoring boundary conditions and optimization,
-		it can be written in pseudo-python like this:</p>
+		it can be written in pseudo-Python like this:</p>
 <pre><code>def interpol(m, y, x):
   m = pre_filter(m)
   d = eval(m, y, x)

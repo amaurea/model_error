@@ -53,7 +53,7 @@
 	sources of such leakage are strong point sources, and for common scanning patterns the leakage
 	manifests as an X around each such source. I discuss why this happens, and present several
 	old and new methods for mitigating and/or eliminating this leakage, along with a small
-	stand-alone TOD simulator and map-maker in python that implements them.
+	stand-alone TOD simulator and map-maker in Python that implements them.
 \end{abstract}
 
 \section{Introduction}
@@ -80,7 +80,7 @@ Given this result it might be surprising to hear that most maximum-likelihood ma
 made using eq.~\ref{eq:mapmaking} are biased to some extent, with the archetypical example
 being lines extending away from bright point sources in the map, often in the shape of an X
 (but this depends on the telescope's scanning pattern). The source of this bias is \emph{model
-error}: the failure of eq.~\ref{eq:mapmaking} to accurately describe the real data; and
+error}: the failure of eq.~\ref{eq:model} to accurately describe the real data; and
 in this paper I will describe the main types of model error in maximum-likelihood mapmaking, simulate their
 effect and investigate several methods for mitigating or eliminating them.
 
@@ -88,7 +88,11 @@ effect and investigate several methods for mitigating or eliminating them.
 The most obvious problem with eq.~\ref{eq:model} is that it models the sky as a
 finite vector of pixels, which will leave out any signal on scales smaller than the
 pixel spacing. This is exacerbated by the canonical choice of a \emph{nearest-neighbor} response
-model in $P$. In this model, that the value of each sample is simply given by the value of the
+model in $P$. Every CMB map-maker I am aware of uses nearest-neighbor, including destripers like
+MADAM \citep{madam/2010} and SRoll \citep{planck/hfi/maps/2018}, filter+bin map-makers like those
+used in SPT \citep{spt/maps/2011} and BICEP \citep{bicep2a/2014} or the maximum likelihood map-makers
+used in ACT \citep{act-2017} and QUIET \citep{quiet-gal/2015}. In this model, the value of
+each sample is simply given by the value of the
 closest pixel to it, regardless of how far away from the pixel center it is. This results
 in a response matrix with a very simple structure: For each row (representing a sample)
 a single element will be 1 (representing the pixel hit by that sample), and all others
@@ -512,7 +516,7 @@ tick all those boxes, and in particular none of the blind methods can handle inc
 		errors; \dfn{cost}: A rough indication of time cost of the method, relative to
 		standard map-making. Iterative linear/cubic mapmaking naively have a cost factor of
 		$N_\textrm{iter}$, but in practice this can usually be avoided. \dfn{compl.}:
-		A rough indication of how complex the method is to implement. Somewhat subjective.
+		A rough indication of how complex the method is to implement (this is somewhat subjective).
 		\dfn{pixwin}:
 		The pixel window the method produces. Higher-order interpolation methods results in
 		a ``smaller'' (closer to unity) pixel window.\dfn{new}: Whether this is a new
@@ -522,7 +526,7 @@ tick all those boxes, and in particular none of the blind methods can handle inc
 
 \section{Simulations}
 I wrote a minimal maximum-likelihood
-mapmaking library \code{toy.py} in about 300 lines of python to demonstrate the performance of these
+mapmaking library \code{toy.py} in about 300 lines of Python to demonstrate the performance of these
 methods, along with a driver script \code{examples.py}
 that generates the plots in this paper. They can be found at \url{https://github.com/amaurea/model_error}.
 The library emphasizes simplicity and is neither general
@@ -543,7 +547,7 @@ two signals:
 amplitude of $2\cdot 10^4$ (500 times higher than the color scale used in the plots in the
 results section). This will be representative of e.g. a bright quasar as seen by a high-resolution
 CMB telesope like ACT.
-	\item A CMB-like field built by simulating a 1/l spectrum with an angular
+	\item A CMB-like field built by simulating a $1/l$ spectrum with an angular
 resolution of 1 pixel and an RMS of 1. This will test whether model error
 is a problem in the absence of bright sources.
 \end{enumerate}
@@ -845,7 +849,7 @@ typically by a factor of 3-10, but varying by method and distance from the sourc
 The computationally heaviest method, bicubic interpolation, provides the best reduction (about a factor
 of 20) of these at large distance, but as we saw in figure~\ref{fig:highorder1d}, this comes at the cost of making
 things worse near the source.
-The iterative iterative approximation to bicubic interpolation might be the best compromise
+The iterative approximation to bicubic interpolation might be the best compromise
 between low-range and short-range leakage, reducing both to $<0.4 \cdot 10^{-4}$.
 However, since these methods only target sub-pixel
 errors, it comes as no surprise that they do not help at all with data inconsistencies
@@ -1131,7 +1135,7 @@ The forward operation $d=Pm$ can be done in two parts. The first
 is a convolution of the whole map by a spline pre-filter, followed by the
 actual per-sample interpolation. This is implemented in \code{scipy.ndimage.map\_coordinates},
 and when specializing to 2 dimensions and ignoring boundary conditions and optimization,
-it can be written in pseudo-python like this:
+it can be written in pseudo-Python like this:
 \begin{lstlisting}
 def interpol(m, y, x):
 	m = pre_filter(m)
