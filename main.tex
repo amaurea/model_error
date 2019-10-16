@@ -1,6 +1,6 @@
 \documentclass{article}
 \pdfoutput=1
-\usepackage{amsmath,amssymb,gensymb,color,graphicx,array,authblk,multirow}
+\usepackage{amsmath,amssymb,gensymb,color,graphicx,array,authblk,multirow,soul}
 \usepackage{natbib,hyperref,aas_macros}
 \usepackage[margin=22mm]{geometry}
 \usepackage{listings}
@@ -9,12 +9,14 @@
 
 \DeclareFixedFont{\ttb}{T1}{txtt}{bx}{n}{9} % for bold
 \DeclareFixedFont{\ttm}{T1}{txtt}{m}{n}{9}  % for normal
+\DeclareRobustCommand{\hlblack}[1]{{\sethlcolor{black}\hl{#1}}}
 % Defining colors
 \definecolor{deepblue}{rgb}{0,0,0.5}
 \definecolor{deepred}{rgb}{0.6,0,0}
 \definecolor{deepgreen}{rgb}{0,0.5,0}
 \definecolor{border}{rgb}{0.9,0.9,0.9}
 \definecolor{orange}{rgb}{1.0,0.5,0.0}
+\definecolor{purple}{rgb}{0.7,0.0,0.5}
 \lstset{
 	language=Python,
 	backgroundcolor=\color{white}, %%%%%%%
@@ -30,6 +32,7 @@
 }
 \newcommand{\good}[1]{{\color{deepgreen}\textbf{#1}}}
 \newcommand{\bad}[1]{{\color{red}\textbf{#1}}}
+\newcommand{\terrible}[1]{{\color{red}\textbf{\hlblack{#1}}}}
 \newcommand{\medi}[1]{{\color{orange}\textbf{#1}}}
 \newcommand{\mixed}[1]{{\color{blue}\textbf{#1}}}
 \newcommand{\neutral}[1]{#1}
@@ -70,21 +73,23 @@ when each sample was taken and how it responded to that. $n$ represents the
 noise contribution to each sample, and is usually taken to be normal distributed
 with some covariance $N$. The maximum likelihood solution to this equation is
 \begin{align}
-\hat m &= (P^T N^{-1} P)^{-1} P^T N^{-1} d \label{eq:mapmaking}
+	\hat m &= (P^T N^{-1} P)^{-1} P^T N^{-1} d \equiv M_{PN} d \label{eq:mapmaking}
 \end{align}
-and it's simple to see that this solution is unbiased by inserting our model for $d$:
+where $M_N$ is the map-making operator using the response matrix $P$ and the noise model $N$.
+It's simple to see that this solution is unbiased by inserting our model for $d$:
 \begin{align}
 \langle \hat m \rangle &= (P^T N^{-1} P)^{-1}P^T N^{-1}(Pm + \overbrace{\langle n \rangle}^{0}) = m
 \end{align}
 Given this result it might be surprising to hear that most maximum-likelihood maps
 made using eq.~\ref{eq:mapmaking} are biased to some extent, with the archetypical example
-being lines extending away from bright point sources in the map, often in the shape of an X
-(but this depends on the telescope's scanning pattern). The source of this bias is \emph{model
+being linear artifacts extending away from bright point sources in the map, often in the shape of an X
+(but this depends on the telescope's scanning pattern). The source of these artifacts is \emph{model
 error}: the failure of eq.~\ref{eq:model} to accurately describe the real data; and
 in this paper I will describe the main types of model error in maximum-likelihood mapmaking, simulate their
-effect and investigate several methods for mitigating or eliminating them.
+effect and investigate several old and new methods for mitigating or eliminating them.
 
-\section{Sub-pixel structure}
+\section{Sources of model error}
+\subsection{Sub-pixel structure}
 The most obvious problem with eq.~\ref{eq:model} is that it models the sky as a
 finite vector of pixels, which will leave out any signal on scales smaller than the
 pixel spacing. This is exacerbated by the canonical choice of a \emph{nearest-neighbor} response
@@ -157,11 +162,29 @@ extending far beyond the area with significant signal. Effectively the correlate
 noise model is causing local model errors to leak roughly a correlation length
 into the surrounding pixels.
 
+\subsection{Signal or instrumental variability}
+\label{sect:inconsistency}
+Real telescopes don't have 100\% accurate pointing and gain, and even if they did, the
+sky is not static and unchanging. These effects mean the telescope effectively sees the
+sky jitter around slightly while varying in brightness. There is no room for this in
+eq.~\ref{eq:model} aside from the noise term $n$, so time-variable instrumental errors
+or variable point sources will lead to exactly the same sort of artifacts as sub-pixel errors do.
+
+\section{Workarounds}
+The artifacts are ultimately caused by a combination of two factors:
+\begin{enumerate}
+	\item Multiple samples are mapped onto the same pixel, but don't agree on what the
+		signal in that pixel should be.
+	\item The correlated noise model causes a non-local response to such errors.
+\end{enumerate}
+This points to two approaches for eliminating them: Improve the model so it matches
+the data more accurately, or modify the noise model to make it more local.
+
 \subsection{Higher-order mapmaking}
-Since the largest source of sub-pixel bias is the use of nearest-neighbor interpolation in
-the response matrix $P$, an obvious next step is to use a smoother interpolation function,
-such as bilinear and bicubic spline interpolation. These are popular in image processing, but
-are as far as I am aware unused in CMB map making.
+An obvious way to improve the model is to replace nearest-neibhor interpolation in 
+the response matrix $P$
+with smoother interpolation functions such as bilinear or bicubic spline interpolation.
+These are popular in image processing, but are as far as I am aware unused in CMB map making.
 
 Bilinear interpolation is considerably slower and more complicated than nearest neighbor,
 and each sample now interacts with the four closest pixels instead of just one.
@@ -220,11 +243,12 @@ So we see that high interpolation order has smaller total residuals and hence lo
 non-local artifacts from the noise correlations, but low-order interpolation has shorter
 correlation length for the interpolation functions themselves, leading to a faster decay of
 the ringing. For the example in figure~\ref{fig:highorder1d}, the sweet spot is linear interpolation.
-
 Even better locality (at even higher cost) should be possible with an interpolation
 function based on the actual point spread function of the instrument.
-However, there are diminishing returns when reducing sub-pixel errors because there is another
-class of model errors that if often much larger, as we shall see in section~\ref{sect:inconsistency}.
+
+Aside from the high cost and non-locality inherent in these interpolators, they are also
+limited by only addressing sub-pixel errors. Higher-order map-making does nothing to remove
+artifacts from variable instrumental errors or intrinsic sky variability.
 
 \subsubsection{Iterative approximation}
 Since the response matrix often is the bottleneck in maximum-likelihood mapmaking,
@@ -236,7 +260,7 @@ response matrix. This process can be repeated if necessary, though in my tests t
 was little point in doing more than 1-3 iterations.
 \begin{align}
 \hat m_0 &= 0 \notag \\
-\hat m_{i+1} &= \hat m_i + (P^TN^{-1}P)^{-1}P^TN^{-1}(d - \bar P \hat m_i) \label{eq:iterative}
+\hat m_{i+1} &= \hat m_i + M_{PN}(d - \bar P \hat m_i) \label{eq:iterative}
 \end{align}
 Here $P$ is the standard nearest-neighbor response matrix and $\bar P$ is
 the higher-order one we are approximating. Note that this iteration converges
@@ -267,72 +291,52 @@ $10^{-4}$ level, which is negligible. Non-local model errors are therefore only
 a concern when a strong, compact signal is close to a region of weaker signal. In
 CMB map-making the typical case would be a strong point source like a quasar.
 
-High-order interpolation treats the whole sky the same, and has the advantage that it
-can be done blindly, with no prior knowledge about which parts of the sky might
-be important sources of leakage. This comes at a large performance
-penalty, however. And as we have seen, the most accessible such methods, linear and cubic spline
-interpolation, do not perfectly eliminate this bias.
-
-If one does know the location
-and amplitude of the bright point sources in the sky, however, a much simpler approach
-is to simply subtract those point sources in the data before making the map
-\citep{dunner/etal/2013}. This
+If one knows the location and amplitude of the bright point sources in the sky,
+one can simply subtract those point sources in the data before making the map. This
 results in a map free of both the point sources (which can be useful in itself)
 and the artifacts they would have sourced. If needed, the source model can then be
 projected onto the sky using an uncorrelated noise model $W$ (for example $W=I$)
 and added back to the map.
 \begin{align}
-\hat m_\textrm{srcfree} &= (P^TN^{-1}P)^{-1}P^TN^{-1}(d - \sum_i A_i B_i) \notag \\
-\hat m_\textrm{tot} &= \hat m_\textrm{srcfree} + (P^TW^{-1}P)^{-1}P^T W^{-1}\sum_i A_i B_i
+\hat m_\textrm{srcfree} &= M_{PN}(d - \sum_i A_i B_i) \notag \\
+\hat m_\textrm{tot} &= \hat m_\textrm{srcfree} + M_{PW}\sum_i A_i B_i
 \end{align}
 Here $A_i$ is the amplitude of source $i$, and $B_i$ is a vector of each sample's
 response to an instrument beam centered on the position of that source.
 
-\section{Inconsistency}
-\label{sect:inconsistency}
-Real telescopes don't have 100\% accurate pointing and gain, and even if they did, the
-sky is not static and unchanging. These effects mean the telescope effectively sees the
-sky jitter around slightly while varying in brightness. There is no room for this in
-eq.~\ref{eq:model} aside from the noise term $n$, so time-variable instrumental errors
-or variable point sources will
-lead to exactly the same sort of leakage as
-sub-pixel errors do. But since these errors are not sourced by sub-pixel structures,
-neither higher-order interpolation nor point source subtraction help here.
-
-The leakage is ultimately caused by two factors:
-\begin{enumerate}
-	\item Multiple samples are mapped onto the same pixel, but don't agree on what that
-		pixel should be.
-	\item The correlated noise model causes a non-local response to such errors.
-\end{enumerate}
-This points to two approaches for eliminating the leakage: Model the noise as
-uncorrelated, or add more degrees of freedom.
+This simple approach was used in e.g. \citet{dunner/etal/2013}, and succeeds in getting
+rid of the artifacts sourced by sub-pixel structre in the point sources. However, unless
+one has a point source model that takes into account time-variable pointing, gain or
+beams errors, or intrinsic amplitude variations, then this method does nothing to
+reduce artifacts from variability. It is also limiting that it requires some properties
+of the sky to already be known, and that it can only be applied to signals for which
+an accurate, non-pixellated model is available.
 
 \subsection{White source mapping}
-Of course, simply mapping using an uncorrelated noise model would produce a horribly stripy
-map in the presence of
-realistic correlated noise. However, we don't need everything to be uncorrelated to get
-rid of leakage, we just need to decouple the bright point sources from those correlations.
-This suggests the following approach:
+Model errors do not produce non-local artifacts when using an uncorrelated nosie model,
+but of course, simply mapping using such a noise model would produce a horribly stripy
+map in the presence of realistic correlated noise. However, we don't need everything to
+be uncorrelated to get rid of leakage, we just need to decouple the bright point sources
+from those correlations. This suggests the following approach:
 \begin{enumerate}
 	\item Make a point source free set of samples $d'$ from $d$ by smoothly in-painting the samples in $d$
 		that hit the bright sources, ideally using maximum likelihood in-painting, but the quality of the
 		in-painting only matters for the optimality of the method - bad in-painting will not cause a bias.
 	\item Make a maximum-likelihood map $\hat m'$ of the in-painted TOD using the full noise model.
 		\begin{align}
-		\hat m' &= (P^TN^{-1}P)^{-1}P^T N^{-1} d'
+		\hat m' &= M_{PN} d'
 		\end{align}
 	\item If the in-painted regions were small compared to the noise correlation length, then
 		the missing signal $d-d'$ from the previous map will have approximately white noise,
 		so we can map these bothersome samples using a simple white noise model:
 		\begin{align}
-		\Delta m &= (P^TW^{-1}P)^{-1}P^T W^{-1}(d-d')
+		\Delta m &= M_{PW}(d-d')
 		\end{align}
 	\item Add these maps to get the total, unbiased sky map: $\hat m = \hat m' + \Delta m$.
 \end{enumerate}
 
 \subsection{Source sub-sampling}
-We can eliminate model error by having at least one degree of freedom per sample,
+We can completely eliminate model error by having at least one degree of freedom per sample,
 but if we did that to every sample, there would be no averaging down of the noise,
 and we wouldn't really get a map, just a reorganized version of the input data. However,
 there is nothing wrong with oversampling like this just around strong point sources and
@@ -349,13 +353,13 @@ where mask is True for samples that hit bright sources and False otherwise.
 
 One can then solve jointly for the maximum-likelihood values $\hat m$ and $\hat s$. This can still
 be done using equation~\ref{eq:mapmaking}, since equation~\ref{eq:joint} is still of the same form
-as equation~\ref{eq:model}. $m$ and $s$ are in isolation not well defined. Some samples are
+as equation~\ref{eq:model}. $m$ and $s$ are in isolation not well defined: Some samples are
 both covered by pixels from $m$ and by special per-sample degrees of freedom from $m$, so
 signal can move freely from one to the other without changing the residuals. This can be avoided by
 modifying $P$ to have it skip those samples, but it is not actually necessary, for
 the total map
 \begin{align}
-\hat m_\textrm{tot}&= \hat m + (P^TW^{-1}P)^{-1}P^TW^{-1}\hat s \label{eq:jointsol}
+\hat m_\textrm{tot}&= \hat m + M_{PW}\hat s \label{eq:jointsol}
 \end{align}
 \emph{is} well-defined in either case, and is the artifact-free map of the sky we are after.
 
@@ -401,6 +405,42 @@ the solution outside the cut area because $\bar P$ already has enough degrees of
 perfectly match the data there, resulting in zero local residual, and adding even more degrees of freedom
 in this area will not change that.
 
+\subsection{PGLS}
+Postprocessed Generalized Least Squares (PGLS) is a method developed for mapmaking with
+the infrared telescope Herschel. Unlike the other methods discussed here, this method
+does not try to prevent artifacts from forming, but instead attempts to measure and subtract
+them in a second pass of map-making. We can model a standard maximum-likelihood map built
+using eq.~\ref{eq:mapmaking} as in practice being $\hat m = m + a + q$ where $m$ is the
+map we would have gotten for a noise-free dataset with an uncorrelated noise model,
+$a$ are the unwanted artifacts and $q$ is the pixel-space noise.
+The goal of PGLS is build an estimator $\hat a$ for the artifacts in the map, and then subtract
+this from $\hat m$ to produce a clean map.
+
+We can exploit the fact that $a$ is a locally poor fit to the data to isolate it from the signal.
+Projecting back into time domain we get 
+\begin{align}
+	r &= P\hat m - d = Pm - d + Pa + Pq
+\end{align}
+Ideally the term $Pm-d$ would equal our time-domain noise $n$, but as we have seen it
+also contains sub-pixel errors $e$ (which is why the artifacts arise in the first place).
+Hence, we have
+\begin{align}
+	r &= Pa + Pq - n - e
+\end{align}
+The sub-pixel errors average to zero when averaged over a pixel using an uncorrelated noise model\footnote{
+	This follows from our definition of $m$ above. $M_{PW}e = M_{PW}(s - PM_{PW}s) = 0$, where $s$ is the noise-free sky signal.}, so if we could get rid of the
+correlated noise in the term $Pq-n$ we could recover $\hat a$ by mapping $r$ with an uncorrelated
+noise model. PGLS does this by applying a running median filter $f$ to $r$, resulting in the following
+algorithm:
+\begin{align}
+	\hat m_0 &= M_{PN} d \notag \\
+	\hat m_i &= \hat m_{i-1} - M_{PW} f(P\hat m_{i-1} - d)
+\end{align}
+The median filter length is a compromise between the need to remove as much correlated noise as
+possible and to retain the artifacts themselves, and must be tuned to the instrument. The balance
+between artifacts and noise can also be adjusted by iterating the scheme, as indicated by the
+index $i$. Each iteration recovers more of the artifacts at the cost of letting through more noise.
+
 \subsection{Summary of the methods}
 Table~\ref{tab:summary} shows a summary of the methods we will investigate. The ideal method would be
 blind (no prior knowledge about which parts of the sky have strong signal),
@@ -409,19 +449,24 @@ tick all those boxes, and in particular none of the blind methods can handle inc
 
 \begin{table}
 	\centering
-	\begin{tabular}{cccccccccc}
+	\hspace*{-5mm}
+	\begin{tabular}{cccccccccccc}
 			&
-			\bf standard &
+			\bf std &
 			\bf it.lin &
 			\bf it.cubic &
 			\bf bilin &
 			\bf bicubic &
+			\bf pgls &
+			\bf xgls &
 			\bf srcsub &
 			\bf srcmask &
 			\bf srcwhite &
 			\bf srcsamp
 		\\
 			\bf blind &
+			\good{yes} &
+			\good{yes} &
 			\good{yes} &
 			\good{yes} &
 			\good{yes} &
@@ -441,6 +486,8 @@ tick all those boxes, and in particular none of the blind methods can handle inc
 			\good{yes} &
 			\good{yes} &
 			\good{yes} &
+			\good{yes} &
+			\good{yes} &
 			\good{yes}
 		\\
 			\bf incon. &
@@ -451,10 +498,14 @@ tick all those boxes, and in particular none of the blind methods can handle inc
 			\bad{no} &
 			\bad{no} &
 			\good{yes} &
+			\bad{no} &
+			\good{yes} &
 			\good{yes} &
 			\good{yes}
 		\\
 			\bf holes &
+			\good{no} &
+			\good{no} &
 			\good{no} &
 			\good{no} &
 			\good{no} &
@@ -472,6 +523,8 @@ tick all those boxes, and in particular none of the blind methods can handle inc
 			\bad{4} &
 			\bad{16} &
 			\good{1} &
+			\terrible{500} &
+			\good{1} &
 			\good{1} &
 			\good{1} &
 			\good{1}
@@ -483,20 +536,24 @@ tick all those boxes, and in particular none of the blind methods can handle inc
 			\medi{high} &
 			\bad{v.high} &
 			\good{low} &
+			\medi{high} &
+			\good{low} &
 			\good{low} &
 			\good{low} &
 			\good{low}
 		\\
 			\bf pixwin &
-			\neutral{standard} &
+			\neutral{std} &
 			\mixed{small} &
 			\mixed{small} &
 			\mixed{small} &
 			\mixed{small} &
-			\neutral{standard} &
-			\neutral{standard} &
-			\neutral{standard} &
-			\neutral{standard}
+			\neutral{std} &
+			\neutral{std} &
+			\neutral{std} &
+			\neutral{std} &
+			\neutral{std} &
+			\neutral{std}
 		\\
 			\bf new &
 			\neutral{no} &
@@ -504,6 +561,8 @@ tick all those boxes, and in particular none of the blind methods can handle inc
 			\mixed{yes} &
 			\mixed{yes} &
 			\mixed{yes} &
+			\neutral{no} &
+			\neutral{no} &
 			\neutral{no} &
 			\neutral{no} &
 			\mixed{yes} &
@@ -583,7 +642,7 @@ but consisted of just a single scan of length 1100 samples which was mapped onto
 \begin{figure}[ph!]
 	\centering
 	\begin{lowtabmargin}
-	\begin{tabular}{>{\centering\arraybackslash}m{15mm}>{\centering\arraybackslash}m{14mm}>{\centering\arraybackslash}m{14mm}>{\centering\arraybackslash}m{14mm}>{\centering\arraybackslash}m{14mm}>{\centering\arraybackslash}m{14mm}>{\centering\arraybackslash}m{14mm}>{\centering\arraybackslash}m{14mm}>{\centering\arraybackslash}m{14mm}>{\centering\arraybackslash}m{14mm}>{\centering\arraybackslash}m{14mm}}
+	\begin{tabular}{>{\centering\arraybackslash}m{15mm}>{\centering\arraybackslash}m{12mm}>{\centering\arraybackslash}m{12mm}>{\centering\arraybackslash}m{12mm}>{\centering\arraybackslash}m{12mm}>{\centering\arraybackslash}m{12mm}>{\centering\arraybackslash}m{12mm}>{\centering\arraybackslash}m{12mm}>{\centering\arraybackslash}m{12mm}>{\centering\arraybackslash}m{12mm}>{\centering\arraybackslash}m{12mm}>{\centering\arraybackslash}m{12mm}>{\centering\arraybackslash}m{12mm}}
 		 &
 		\bf \footnotesize standard &
 		\bf \footnotesize standard &
@@ -591,6 +650,8 @@ but consisted of just a single scan of length 1100 samples which was mapped onto
 		\bf \footnotesize it.cubic &
 		\bf \footnotesize bilin &
 		\bf \footnotesize bicubic &
+		\bf \footnotesize pgls &
+		\bf \footnotesize xgls &
 		\bf \footnotesize srcsub &
 		\bf \footnotesize srccut &
 		\bf \footnotesize srcwhite &
@@ -598,6 +659,8 @@ but consisted of just a single scan of length 1100 samples which was mapped onto
 	\\
 		&
 		\footnotesize uncorr &
+		\footnotesize corr &
+		\footnotesize corr &
 		\footnotesize corr &
 		\footnotesize corr &
 		\footnotesize corr &
@@ -615,6 +678,8 @@ but consisted of just a single scan of length 1100 samples which was mapped onto
 		\img{examples/src_2d_corr_itcubic_map_0.png} &
 		\img{examples/src_2d_corr_lin_map_0.png} &
 		\img{examples/src_2d_corr_cubic_map_0.png} &
+		\img{examples/src_2d_corr_pgls_map_0.png} &
+		\img{examples/src_2d_corr_xgls_map_0.png} &
 		\img{examples/src_2d_corr_srcsub_map_0.png} &
 		\img{examples/src_2d_corr_srccut_map_0.png} &
 		\img{examples/src_2d_corr_srcwhite_map_0.png} &
@@ -627,6 +692,8 @@ but consisted of just a single scan of length 1100 samples which was mapped onto
 		\img{examples/src_gain_2d_corr_itcubic_map_0.png} &
 		\img{examples/src_gain_2d_corr_lin_map_0.png} &
 		\img{examples/src_gain_2d_corr_cubic_map_0.png} &
+		\img{examples/src_gain_2d_corr_pgls_map_0.png} &
+		\img{examples/src_gain_2d_corr_xgls_map_0.png} &
 		\img{examples/src_gain_2d_corr_srcsub_map_0.png} &
 		\img{examples/src_gain_2d_corr_srccut_map_0.png} &
 		\img{examples/src_gain_2d_corr_srcwhite_map_0.png} &
@@ -639,6 +706,8 @@ but consisted of just a single scan of length 1100 samples which was mapped onto
 		\img{examples/src_ptoff_2d_corr_itcubic_map_0.png} &
 		\img{examples/src_ptoff_2d_corr_lin_map_0.png} &
 		\img{examples/src_ptoff_2d_corr_cubic_map_0.png} &
+		\img{examples/src_ptoff_2d_corr_pgls_map_0.png} &
+		\img{examples/src_ptoff_2d_corr_xgls_map_0.png} &
 		\img{examples/src_ptoff_2d_corr_srcsub_map_0.png} &
 		\img{examples/src_ptoff_2d_corr_srccut_map_0.png} &
 		\img{examples/src_ptoff_2d_corr_srcwhite_map_0.png} &
@@ -651,6 +720,8 @@ but consisted of just a single scan of length 1100 samples which was mapped onto
 		\img{examples/src_noise_2d_corr_itcubic_map_0.png} &
 		\img{examples/src_noise_2d_corr_lin_map_0.png} &
 		\img{examples/src_noise_2d_corr_cubic_map_0.png} &
+		\img{examples/src_noise_2d_corr_pgls_map_0.png} &
+		\img{examples/src_noise_2d_corr_xgls_map_0.png} &
 		\img{examples/src_noise_2d_corr_srcsub_map_0.png} &
 		\img{examples/src_noise_2d_corr_srccut_map_0.png} &
 		\img{examples/src_noise_2d_corr_srcwhite_map_0.png} &
@@ -663,6 +734,8 @@ but consisted of just a single scan of length 1100 samples which was mapped onto
 		\img{examples/src_noise_gain_2d_corr_itcubic_map_0.png} &
 		\img{examples/src_noise_gain_2d_corr_lin_map_0.png} &
 		\img{examples/src_noise_gain_2d_corr_cubic_map_0.png} &
+		\img{examples/src_noise_gain_2d_corr_pgls_map_0.png} &
+		\img{examples/src_noise_gain_2d_corr_xgls_map_0.png} &
 		\img{examples/src_noise_gain_2d_corr_srcsub_map_0.png} &
 		\img{examples/src_noise_gain_2d_corr_srccut_map_0.png} &
 		\img{examples/src_noise_gain_2d_corr_srcwhite_map_0.png} &
@@ -675,6 +748,8 @@ but consisted of just a single scan of length 1100 samples which was mapped onto
 		\img{examples/src_noise_ptoff_2d_corr_itcubic_map_0.png} &
 		\img{examples/src_noise_ptoff_2d_corr_lin_map_0.png} &
 		\img{examples/src_noise_ptoff_2d_corr_cubic_map_0.png} &
+		\img{examples/src_noise_ptoff_2d_corr_pgls_map_0.png} &
+		\img{examples/src_noise_ptoff_2d_corr_xgls_map_0.png} &
 		\img{examples/src_noise_ptoff_2d_corr_srcsub_map_0.png} &
 		\img{examples/src_noise_ptoff_2d_corr_srccut_map_0.png} &
 		\img{examples/src_noise_ptoff_2d_corr_srcwhite_map_0.png} &
@@ -687,6 +762,8 @@ but consisted of just a single scan of length 1100 samples which was mapped onto
 		\img{examples/src_cmb_noise_2d_corr_itcubic_map_0.png} &
 		\img{examples/src_cmb_noise_2d_corr_lin_map_0.png} &
 		\img{examples/src_cmb_noise_2d_corr_cubic_map_0.png} &
+		\img{examples/src_cmb_noise_2d_corr_pgls_map_0.png} &
+		\img{examples/src_cmb_noise_2d_corr_xgls_map_0.png} &
 		\img{examples/src_cmb_noise_2d_corr_srcsub_map_0.png} &
 		\img{examples/src_cmb_noise_2d_corr_srccut_map_0.png} &
 		\img{examples/src_cmb_noise_2d_corr_srcwhite_map_0.png} &
@@ -699,6 +776,8 @@ but consisted of just a single scan of length 1100 samples which was mapped onto
 		\img{examples/src_cmb_noise_gain_2d_corr_itcubic_map_0.png} &
 		\img{examples/src_cmb_noise_gain_2d_corr_lin_map_0.png} &
 		\img{examples/src_cmb_noise_gain_2d_corr_cubic_map_0.png} &
+		\img{examples/src_cmb_noise_gain_2d_corr_pgls_map_0.png} &
+		\img{examples/src_cmb_noise_gain_2d_corr_xgls_map_0.png} &
 		\img{examples/src_cmb_noise_gain_2d_corr_srcsub_map_0.png} &
 		\img{examples/src_cmb_noise_gain_2d_corr_srccut_map_0.png} &
 		\img{examples/src_cmb_noise_gain_2d_corr_srcwhite_map_0.png} &
@@ -711,6 +790,8 @@ but consisted of just a single scan of length 1100 samples which was mapped onto
 		\img{examples/src_cmb_noise_ptoff_2d_corr_itcubic_map_0.png} &
 		\img{examples/src_cmb_noise_ptoff_2d_corr_lin_map_0.png} &
 		\img{examples/src_cmb_noise_ptoff_2d_corr_cubic_map_0.png} &
+		\img{examples/src_cmb_noise_ptoff_2d_corr_pgls_map_0.png} &
+		\img{examples/src_cmb_noise_ptoff_2d_corr_xgls_map_0.png} &
 		\img{examples/src_cmb_noise_ptoff_2d_corr_srcsub_map_0.png} &
 		\img{examples/src_cmb_noise_ptoff_2d_corr_srccut_map_0.png} &
 		\img{examples/src_cmb_noise_ptoff_2d_corr_srcwhite_map_0.png} &
@@ -735,88 +816,106 @@ but consisted of just a single scan of length 1100 samples which was mapped onto
 
 \begin{table}
 	\centering
-	\begin{tabular}{cccccccccc}
+	\resizebox{\textwidth}{!}{%
+	\begin{tabular}{cccccccccccc}
 			&
 			\bf standard &
 			\bf it.lin &
 			\bf it.cubic &
 			\bf bilin &
 			\bf bicubic &
+			\bf pgls &
+			\bf xgls &
 			\bf srcsub &
 			\bf srccut &
 			\bf srcwhite &
 			\bf srcsamp
 		\\
 			\bf near &
-			\bad{0.866} &
+			\bad{0.868} &
 			\medi{0.143} &
 			\medi{0.270} &
 			\medi{0.172} &
-			\bad{1.776} &
+			\bad{1.777} &
+			\medi{0.295} &
+			\good{0.000} &
 			\good{0.000} &
 			\good{0.000} &
 			\good{0.000} &
 			\good{0.000}
 		\\
 			\bf far &
-			\bad{3.520} &
+			\bad{3.518} &
 			\bad{1.146} &
 			\medi{0.392} &
 			\bad{0.889} &
-			\medi{0.179} &
+			\medi{0.178} &
+			\medi{0.201} &
+			\good{0.000} &
 			\good{0.000} &
 			\good{0.000} &
 			\good{0.000} &
 			\good{0.000}
 		\\
 			\bf near + pt. &
-			\bad{2.542} &
-			\bad{1.966} &
-			\bad{2.057} &
-			\bad{2.015} &
-			\bad{3.613} &
-			\bad{1.910} &
+			\bad{2.544} &
+			\bad{2.016} &
+			\bad{1.965} &
+			\bad{2.058} &
+			\bad{3.614} &
+			\medi{0.355} &
+			\good{0.000} &
+			\bad{1.909} &
 			\good{0.000} &
 			\good{0.000} &
 			\good{0.000}
 		\\
 			\bf far + pt. &
-			\bad{3.605} &
-			\bad{1.433} &
-			\bad{1.398} &
-			\bad{1.439} &
-			\bad{1.493} &
-			\bad{1.440} &
+			\bad{3.603} &
+			\bad{1.241} &
+			\bad{1.248} &
+			\bad{1.212} &
+			\bad{1.239} &
+			\medi{0.257} &
+			\good{0.000} &
+			\bad{1.235} &
 			\good{0.000} &
 			\good{0.000} &
 			\good{0.000}
 		\\
 			\bf near + gain &
-			\bad{5.665} &
+			\bad{5.668} &
 			\bad{4.593} &
 			\bad{4.928} &
 			\bad{4.605} &
-			\bad{6.424} &
+			\bad{6.425} &
+			\bad{2.065} &
+			\good{0.000} &
 			\bad{4.799} &
 			\good{0.000} &
 			\good{0.000} &
 			\good{0.000}
 		\\
 			\bf far + gain &
-			\bad{3.990} &
-			\bad{3.360} &
-			\bad{3.515} &
-			\bad{3.350} &
-			\bad{3.589} &
-			\bad{3.620} &
+			\bad{3.823} &
+			\bad{2.896} &
+			\bad{3.026} &
+			\bad{2.877} &
+			\bad{3.034} &
+			\bad{1.488} &
+			\good{0.000} &
+			\bad{3.116} &
 			\good{0.000} &
 			\good{0.000} &
 			\good{0.000}
 	\end{tabular}
+	}
 	\caption{The maximum absolute value of the leakage from a point source
 		in units of $10^{-4}$ of the peak amplitude, measured in two distance bins: \dfn{near}:
 		5-10 pixels from from the center (just outside the point where the beam becomes negligible),
-		and \dfn{far}: beyond 10 pixels from the center. For the beam, pixel size and noise model
+		and \dfn{far}: beyond 10 pixels from the center. The leakage is measured as the
+		difference between a map using the given model and a correlated noise model and a map using
+		standard nearest neighbor with a white noise model. For the beam, pixel size and noise model
 		used here, sub-pixel errors result in O($10^{-4}$) leakage. Higher-order interpolation reduces this
 		by a factor of 0.5-20 depending on the distance and method (yes, in the worst case it makes it
 		2x worse near the source), while the targeted methods completely eliminate sub-pixel errors.
@@ -866,7 +965,7 @@ a map of the source.
 \begin{figure}[ph!]
 	\centering
 	\begin{lowtabmargin}
-	\begin{tabular}{>{\centering\arraybackslash}m{15mm}>{\centering\arraybackslash}m{14mm}>{\centering\arraybackslash}m{14mm}>{\centering\arraybackslash}m{14mm}>{\centering\arraybackslash}m{14mm}>{\centering\arraybackslash}m{14mm}>{\centering\arraybackslash}m{14mm}>{\centering\arraybackslash}m{14mm}>{\centering\arraybackslash}m{14mm}>{\centering\arraybackslash}m{14mm}>{\centering\arraybackslash}m{14mm}}
+	\begin{tabular}{>{\centering\arraybackslash}m{15mm}>{\centering\arraybackslash}m{12mm}>{\centering\arraybackslash}m{12mm}>{\centering\arraybackslash}m{12mm}>{\centering\arraybackslash}m{12mm}>{\centering\arraybackslash}m{12mm}>{\centering\arraybackslash}m{12mm}>{\centering\arraybackslash}m{12mm}>{\centering\arraybackslash}m{12mm}>{\centering\arraybackslash}m{12mm}>{\centering\arraybackslash}m{12mm}>{\centering\arraybackslash}m{12mm}>{\centering\arraybackslash}m{12mm}}
 			&
 			\bf \footnotesize standard &
 			\bf \footnotesize standard &
@@ -874,6 +973,8 @@ a map of the source.
 			\bf \footnotesize it.cubic &
 			\bf \footnotesize bilin &
 			\bf \footnotesize bicubic &
+			\bf \footnotesize pgls &
+			\bf \footnotesize xgls &
 			\bf \footnotesize srcsub &
 			\bf \footnotesize srccut &
 			\bf \footnotesize srcwhite &
@@ -881,6 +982,8 @@ a map of the source.
 		\\
 			&
 			\footnotesize uncorr &
+			\footnotesize corr &
+			\footnotesize corr &
 			\footnotesize corr &
 			\footnotesize corr &
 			\footnotesize corr &
@@ -898,6 +1001,8 @@ a map of the source.
 			\img{examples/cmb_2d_corr_itcubic_map_0.png} &
 			\img{examples/cmb_2d_corr_lin_map_0.png} &
 			\img{examples/cmb_2d_corr_cubic_map_0.png} &
+			\img{examples/cmb_2d_corr_pgls_map_0.png} &
+			\img{examples/cmb_2d_corr_xgls_map_0.png} &
 			\img{examples/cmb_2d_corr_srcsub_map_0.png} &
 			\img{examples/cmb_2d_corr_srccut_map_0.png} &
 			\img{examples/cmb_2d_corr_srcwhite_map_0.png} &
@@ -910,6 +1015,8 @@ a map of the source.
 			\img{examples/cmb_gain_2d_corr_itcubic_map_0.png} &
 			\img{examples/cmb_gain_2d_corr_lin_map_0.png} &
 			\img{examples/cmb_gain_2d_corr_cubic_map_0.png} &
+			\img{examples/cmb_gain_2d_corr_pgls_map_0.png} &
+			\img{examples/cmb_gain_2d_corr_xgls_map_0.png} &
 			\img{examples/cmb_gain_2d_corr_srcsub_map_0.png} &
 			\img{examples/cmb_gain_2d_corr_srccut_map_0.png} &
 			\img{examples/cmb_gain_2d_corr_srcwhite_map_0.png} &
@@ -922,6 +1029,8 @@ a map of the source.
 			\img{examples/cmb_ptoff_2d_corr_itcubic_map_0.png} &
 			\img{examples/cmb_ptoff_2d_corr_lin_map_0.png} &
 			\img{examples/cmb_ptoff_2d_corr_cubic_map_0.png} &
+			\img{examples/cmb_ptoff_2d_corr_pgls_map_0.png} &
+			\img{examples/cmb_ptoff_2d_corr_xgls_map_0.png} &
 			\img{examples/cmb_ptoff_2d_corr_srcsub_map_0.png} &
 			\img{examples/cmb_ptoff_2d_corr_srccut_map_0.png} &
 			\img{examples/cmb_ptoff_2d_corr_srcwhite_map_0.png} &
@@ -934,6 +1043,8 @@ a map of the source.
 			\img{examples/cmb_2d_corr_itcubic_map_1.png} &
 			\img{examples/cmb_2d_corr_lin_map_1.png} &
 			\img{examples/cmb_2d_corr_cubic_map_1.png} &
+			\img{examples/cmb_2d_corr_pgls_map_1.png} &
+			\img{examples/cmb_2d_corr_xgls_map_1.png} &
 			\img{examples/cmb_2d_corr_srcsub_map_1.png} &
 			\img{examples/cmb_2d_corr_srccut_map_1.png} &
 			\img{examples/cmb_2d_corr_srcwhite_map_1.png} &
@@ -946,6 +1057,8 @@ a map of the source.
 			\img{examples/cmb_gain_2d_corr_itcubic_map_1.png} &
 			\img{examples/cmb_gain_2d_corr_lin_map_1.png} &
 			\img{examples/cmb_gain_2d_corr_cubic_map_1.png} &
+			\img{examples/cmb_gain_2d_corr_pgls_map_1.png} &
+			\img{examples/cmb_gain_2d_corr_xgls_map_1.png} &
 			\img{examples/cmb_gain_2d_corr_srcsub_map_1.png} &
 			\img{examples/cmb_gain_2d_corr_srccut_map_1.png} &
 			\img{examples/cmb_gain_2d_corr_srcwhite_map_1.png} &
@@ -958,6 +1071,8 @@ a map of the source.
 			\img{examples/cmb_ptoff_2d_corr_itcubic_map_1.png} &
 			\img{examples/cmb_ptoff_2d_corr_lin_map_1.png} &
 			\img{examples/cmb_ptoff_2d_corr_cubic_map_1.png} &
+			\img{examples/cmb_ptoff_2d_corr_pgls_map_1.png} &
+			\img{examples/cmb_ptoff_2d_corr_xgls_map_1.png} &
 			\img{examples/cmb_ptoff_2d_corr_srcsub_map_1.png} &
 			\img{examples/cmb_ptoff_2d_corr_srccut_map_1.png} &
 			\img{examples/cmb_ptoff_2d_corr_srcwhite_map_1.png} &
@@ -970,6 +1085,8 @@ a map of the source.
 			\img{examples/cmb_2d_corr_itcubic_map_2.png} &
 			\img{examples/cmb_2d_corr_lin_map_2.png} &
 			\img{examples/cmb_2d_corr_cubic_map_2.png} &
+			\img{examples/cmb_2d_corr_pgls_map_2.png} &
+			\img{examples/cmb_2d_corr_xgls_map_2.png} &
 			\img{examples/cmb_2d_corr_srcsub_map_2.png} &
 			\img{examples/cmb_2d_corr_srccut_map_2.png} &
 			\img{examples/cmb_2d_corr_srcwhite_map_2.png} &
@@ -982,6 +1099,8 @@ a map of the source.
 			\img{examples/cmb_gain_2d_corr_itcubic_map_2.png} &
 			\img{examples/cmb_gain_2d_corr_lin_map_2.png} &
 			\img{examples/cmb_gain_2d_corr_cubic_map_2.png} &
+			\img{examples/cmb_gain_2d_corr_pgls_map_2.png} &
+			\img{examples/cmb_gain_2d_corr_xgls_map_2.png} &
 			\img{examples/cmb_gain_2d_corr_srcsub_map_2.png} &
 			\img{examples/cmb_gain_2d_corr_srccut_map_2.png} &
 			\img{examples/cmb_gain_2d_corr_srcwhite_map_2.png} &
@@ -994,6 +1113,8 @@ a map of the source.
 			\img{examples/cmb_ptoff_2d_corr_itcubic_map_2.png} &
 			\img{examples/cmb_ptoff_2d_corr_lin_map_2.png} &
 			\img{examples/cmb_ptoff_2d_corr_cubic_map_2.png} &
+			\img{examples/cmb_ptoff_2d_corr_pgls_map_2.png} &
+			\img{examples/cmb_ptoff_2d_corr_xgls_map_2.png} &
 			\img{examples/cmb_ptoff_2d_corr_srcsub_map_2.png} &
 			\img{examples/cmb_ptoff_2d_corr_srccut_map_2.png} &
 			\img{examples/cmb_ptoff_2d_corr_srcwhite_map_2.png} &
@@ -1014,51 +1135,61 @@ a map of the source.
 
 \begin{table}
 	\centering
-	\begin{tabular}{cccccccccc}
+	\resizebox{\textwidth}{!}{%
+	\begin{tabular}{cccccccccccc}
 			&
 			\bf standard &
 			\bf it.lin &
 			\bf it.cubic &
 			\bf bilin &
 			\bf bicubic &
+			\bf pgls &
+			\bf xgls &
 			\bf srcsub &
 			\bf srccut &
 			\bf srcwhite &
 			\bf srcsamp
 		\\
 			\bf plain &
-			36.59 &
+			36.58 &
 			21.48 &
 			12.70 &
-			\good{5.03} &
+			\good{5.02} &
 			\good{0.88} &
-			36.59 &
-			36.59 &
+			\bad{150.84} &
+			36.38 &
+			36.58 &
+			79.67 &
 			\bad{274.90} &
-			36.81
+			 36.82
 		\\
 			\bf pt. error &
-			38.69 &
-			33.55 &
-			26.30 &
-			14.36 &
-			13.79 &
-			38.69 &
-			38.96 &
+			 38.68 &
+			 33.55 &
+			 26.29 &
+			 14.35 &
+			 13.78 &
+			\bad{153.88} &
+			 38.47 &
+			 38.68 &
+			 80.69 &
 			\bad{275.80} &
-			38.96
+			 38.97
 		\\
 			\bf gain error &
-			48.87 &
-			40.08 &
-			36.52 &
-			34.25 &
-			34.26 &
-			48.87 &
-			48.95 &
+			 48.87 &
+			 40.07 &
+			 36.52 &
+			 34.24 &
+			 34.25 &
+			\bad{152.00} &
+			 48.70 &
+			 48.87 &
+			 80.69 &
 			\bad{273.01} &
-			48.95
+			 48.97
 	\end{tabular}
+	}
 	\caption{The standard deviation of the difference between a map made with a correlated
 		and uncorrelated noise model, in units of $10^{-4}$ of the standard deviation of the map itself, for each
 		mapmaking method, and for a smooth, noiseless CMB-like field. The fractional leakage is typically
@@ -1066,7 +1197,8 @@ a map of the source.
 		source, but since it is relative to the CMB instead of a bright point source, the amplitude is
 		negligible in absolute terms. The white noise mapping method is an outlier, with relative
 		error up to almost 3\% of the signal itself, but since this is a source-targeted method this would
-		only happen near the targeted sources.}
+		only happen near the targeted sources. Unlike table~\ref{tab:srcleak} the same mapmaking method
+		is used for the maps being subtracted, to avoid penalizing methods with different pixel windows.}
 	\label{tab:cmbleak}
 \end{table}
 

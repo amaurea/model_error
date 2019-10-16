@@ -1,4 +1,4 @@
-import numpy as np, toy, os, sys
+import numpy as np, toy, os, sys, time
 from matplotlib import pyplot
 
 def get_outside(map, rmin, rmax):
@@ -7,7 +7,7 @@ def get_outside(map, rmin, rmax):
 	mask = (r2 > rmin**2)&(r2 < rmax**2)
 	return map[mask]
 
-def demean(m): return m - 0.25*(m[0,0]+m[-1,0]+m[0,-1]+m[-1,-1])
+def demean(m): return m - 0.25*(m[5,0]+m[-5,0]+m[0,-5]+m[0,-5])
 
 def measure_leakage(map, dmap, rmin=0, rmax=100):
 	map, dmap = demean(map), demean(dmap)
@@ -25,12 +25,16 @@ def dump_map(fname, data, map, pmat, pwhite, pbase=None):
 	model = pmat.map2tod(map)
 	rmap  = toy.solve_white((data-model)**2, pwhite)**0.5
 	dmap  = map - toy.solve_iterative(data, pbase, pbase, toy.NmatIdentity())
-	print("Writing %s" % fname)
+	dmap_nn = map - toy.solve_white(data, pwhite)
+	# For CMB we use dmap_nn = dmap to avoid penalizing maps with different
+	# pixel windows.
+	dmap_nn = dmap
+	#print("Writing %s" % fname)
 	np.save(fname, np.array([map, rmap, dmap]))
-	leak_src  = measure_leakage(map, dmap, 0, 5)
-	leak_near = measure_leakage(map, dmap, 5,10)
-	leak_far  = measure_leakage(map, dmap,10,90)
-	leak_std  = np.std(dmap)/np.std(map)
+	leak_src  = measure_leakage(map, dmap_nn, 0, 5)
+	leak_near = measure_leakage(map, dmap_nn, 5,10)
+	leak_far  = measure_leakage(map, dmap_nn,12,90)
+	leak_std  = np.std(dmap_nn[np.isfinite(map)])/np.std(map[np.isfinite(map)])
 	print("Leakage %-50s %14.7e %14.7e %14.7e %14.7e" % (fname, leak_src, leak_near, leak_far, leak_std))
 	sys.stdout.flush()
 
@@ -82,30 +86,30 @@ def run_1d(prefix, shape, pointing, data):
 	omap     = toy.solve_cg_mask_persamp(data, pmat, mask, nmat)
 	dump_tod(prefix + "_1d_corr_srcsamp_tod.npy", data, omap, pmat)
 
-def run_2d(prefix, shape, pointing, data, amp=0, pos=[0,0], sigma=1):
+def run_2d(prefix, shape, pointing, data, amp=0, pos=[0,0], sigma=1, noise=None):
 	# Solve using standard nearest neighbor and a white noise model
 	pmat     = toy.PmatNearest(pointing, shape)
 	omap     = toy.solve_white(data, pmat)
 	dump_map(prefix + "_2d_uncorr_map.npy", data, omap, pmat, pmat)
 
-	## Correlated noise model
-	#nmat     = toy.NmatOneoverf(data.shape[-1], nsub=nsub)
-	#omap     = toy.solve_cg(data, pmat, nmat)
-	#model    = pmat.map2tod(omap)
-	#dump_map(prefix + "_2d_corr_map.npy", data, omap, pmat, pmat)
+	# Correlated noise model
+	nmat     = toy.NmatOneoverf(data.shape[-1], nsub=nsub)
+	omap     = toy.solve_cg(data, pmat, nmat)
+	model    = pmat.map2tod(omap)
+	dump_map(prefix + "_2d_corr_map.npy", data, omap, pmat, pmat)
 
-	# bilinear interpolation
-	pmat_lin = toy.PmatSplinePixell(pointing, shape, order=1)
-	omap     = toy.solve_cg(data, pmat_lin, nmat)
-	dump_map(prefix + "_2d_corr_lin_map.npy", data, omap, pmat_lin, pmat, pmat_lin)
+	## bilinear interpolation
+	#pmat_lin = toy.PmatSplinePixell(pointing, shape, order=1)
+	#omap     = toy.solve_cg(data, pmat_lin, nmat)
+	#dump_map(prefix + "_2d_corr_lin_map.npy", data, omap, pmat_lin, pmat, pmat_lin)
 
-	# bicubic interpolation
-	pmat_cubic = toy.PmatSplinePixell(pointing, shape, order=3)
-	omap     = toy.solve_cg(data, pmat_cubic, nmat)
-	dump_map(prefix + "_2d_corr_cubic_map.npy", data, omap, pmat_cubic, pmat, pmat_cubic)
+	## bicubic interpolation
+	#pmat_cubic = toy.PmatSplinePixell(pointing, shape, order=3)
+	#omap     = toy.solve_cg(data, pmat_cubic, nmat)
+	#dump_map(prefix + "_2d_corr_cubic_map.npy", data, omap, pmat_cubic, pmat, pmat_cubic)
 
 	## local white model
-	#mask     = toy.build_mask_disk(pointing, pos, 5)
+	mask     = toy.build_mask_disk(pointing, pos, 5)
 	#omap     = toy.solve_mask_white(data, pmat, mask, nmat)
 	#dump_map(prefix + "_2d_corr_srcwhite_map.npy", data, omap, pmat, pmat)
 
@@ -117,19 +121,30 @@ def run_2d(prefix, shape, pointing, data, amp=0, pos=[0,0], sigma=1):
 	#omap     = toy.solve_cg_mask(data, pmat, mask, nmat)
 	#dump_map(prefix + "_2d_corr_srccut_map.npy", data, omap, pmat, pmat)
 
-	# Iterative linear (approximation to proper linear)
-	omap     = toy.solve_iterative(data, pmat, pmat_lin, nmat)
-	dump_map(prefix + "_2d_corr_itlin_map.npy", data, omap, pmat_lin, pmat, pmat_lin)
+	## Iterative linear (approximation to proper linear)
+	#omap     = toy.solve_iterative(data, pmat, pmat_lin, nmat)
+	#dump_map(prefix + "_2d_corr_itlin_map.npy", data, omap, pmat_lin, pmat, pmat_lin)
 
-	# Iterative cubic (approximation to proper cubic)
-	omap     = toy.solve_iterative(data, pmat, pmat_cubic, nmat)
-	dump_map(prefix + "_2d_corr_itcubic_map.npy", data, omap, pmat_cubic, pmat, pmat_cubic)
+	## Iterative cubic (approximation to proper cubic)
+	#omap     = toy.solve_iterative(data, pmat, pmat_cubic, nmat)
+	#dump_map(prefix + "_2d_corr_itcubic_map.npy", data, omap, pmat_cubic, pmat, pmat_cubic)
 
 	## source subtraction
 	#signal_src= toy.build_signal_src(pointing, pos, amp=amp, sigma=sigma)
 	#omap     = toy.solve_cg(data-signal_src, pmat, nmat)
 	#omap    += toy.solve_white(signal_src, pmat)
 	#dump_map(prefix + "_2d_corr_srcsub_map.npy", data, omap, pmat, pmat)
+
+	# PGLS
+	omap     = toy.solve_pgls(data, pmat, nmat)
+	model    = pmat.map2tod(omap)
+	dump_map(prefix + "_2d_corr_pgls_map.npy", data, omap, pmat, pmat)
+
+	## XGLS
+	#signal = data-noise if noise is not None else data
+	#omap     = toy.solve_xgls(data, pmat, signal, nmat, verbose=True)
+	#model    = pmat.map2tod(omap)
+	#dump_map(prefix + "_2d_corr_xgls_map.npy", data, omap, pmat, pmat)
 
 np.random.seed(1)
 toy.mpl_setdefault("planck")
@@ -142,7 +157,7 @@ pos      = shape/2
 nsub     = 11
 pointing = toy.build_pointing_1d(shape, nsub=nsub)
 data     = toy.build_signal_src(pointing, pos, amp=1, sigma=1.0)
-run_1d("examples/src", shape, pointing, data)
+#run_1d("examples/src", shape, pointing, data)
 
 # 2d examples. 81x81 pixels. Simple point source in the middle with gaussian profile.
 # 2 tods: 1 vertical and 1 horizontal. 3 samples per pixel in each direction.
@@ -163,9 +178,9 @@ run_2d("examples/src", shape, pointing, signal_src, pos=pos, amp=amp, sigma=sigm
 run_2d("examples/cmb", shape, pointing, signal_cmb, pos=pos)
 run_2d("examples/src_cmb", shape, pointing, signal_src+signal_cmb, pos=pos, amp=amp, sigma=sigma)
 
-run_2d("examples/src_noise", shape, pointing, signal_src+noise, pos=pos, amp=amp, sigma=sigma)
-run_2d("examples/cmb_noise", shape, pointing, signal_cmb+noise, pos=pos)
-run_2d("examples/src_cmb_noise", shape, pointing, signal_src+signal_cmb+noise, pos=pos, amp=amp, sigma=sigma)
+run_2d("examples/src_noise", shape, pointing, signal_src+noise, pos=pos, amp=amp, sigma=sigma, noise=noise)
+run_2d("examples/cmb_noise", shape, pointing, signal_cmb+noise, pos=pos, noise=noise)
+run_2d("examples/src_cmb_noise", shape, pointing, signal_src+signal_cmb+noise, pos=pos, amp=amp, sigma=sigma, noise=noise)
 
 # Pointing offset
 offsets = np.array([[0,0],[1,1]])[:,None,:]/2**0.5 * 1e-2
@@ -176,19 +191,19 @@ run_2d("examples/src_ptoff", shape, pointing, signal_src, pos=pos, amp=amp, sigm
 run_2d("examples/cmb_ptoff", shape, pointing, signal_cmb, pos=pos)
 run_2d("examples/src_cmb_ptoff", shape, pointing, signal_src+signal_cmb, pos=pos, amp=amp, sigma=sigma)
 
-run_2d("examples/src_noise_ptoff", shape, pointing, signal_src+noise, pos=pos, amp=amp, sigma=sigma)
-run_2d("examples/cmb_noise_ptoff", shape, pointing, signal_cmb+noise, pos=pos)
-run_2d("examples/src_cmb_noise_ptoff", shape, pointing, signal_src+signal_cmb+noise, pos=pos, amp=amp, sigma=sigma)
+#run_2d("examples/src_noise_ptoff", shape, pointing, signal_src+noise, pos=pos, amp=amp, sigma=sigma, noise=noise)
+#run_2d("examples/cmb_noise_ptoff", shape, pointing, signal_cmb+noise, pos=pos, noise=noise)
+#run_2d("examples/src_cmb_noise_ptoff", shape, pointing, signal_src+signal_cmb+noise, pos=pos, amp=amp, sigma=sigma, noise=noise)
 
-# Amplitude variability
-gains = np.array([0.995,1.005])[:,None]
-signal_src = toy.build_signal_src(pointing, pos, amp=amp, sigma=sigma)*gains
-signal_cmb = toy.build_signal_from_map(pointing, cmb_highres, nsub=nsub)*gains
+## Amplitude variability
+#gains = np.array([0.995,1.005])[:,None]
+#signal_src = toy.build_signal_src(pointing, pos, amp=amp, sigma=sigma)*gains
+#signal_cmb = toy.build_signal_from_map(pointing, cmb_highres, nsub=nsub)*gains
 
-run_2d("examples/src_gain", shape, pointing, signal_src, pos=pos, amp=amp, sigma=sigma)
+#run_2d("examples/src_gain", shape, pointing, signal_src, pos=pos, amp=amp, sigma=sigma)
 run_2d("examples/cmb_gain", shape, pointing, signal_cmb, pos=pos)
-run_2d("examples/src_cmb_gain", shape, pointing, signal_src+signal_cmb, pos=pos, amp=amp, sigma=sigma)
+#run_2d("examples/src_cmb_gain", shape, pointing, signal_src+signal_cmb, pos=pos, amp=amp, sigma=sigma)
 
-run_2d("examples/src_noise_gain", shape, pointing, signal_src+noise, pos=pos, amp=amp, sigma=sigma)
-run_2d("examples/cmb_noise_gain", shape, pointing, signal_cmb+noise, pos=pos)
-run_2d("examples/src_cmb_noise_gain", shape, pointing, signal_src+signal_cmb+noise, pos=pos, amp=amp, sigma=sigma)
+#run_2d("examples/src_noise_gain", shape, pointing, signal_src+noise, pos=pos, amp=amp, sigma=sigma, noise=noise)
+#run_2d("examples/cmb_noise_gain", shape, pointing, signal_cmb+noise, pos=pos, noise=noise)
+#run_2d("examples/src_cmb_noise_gain", shape, pointing, signal_src+signal_cmb+noise, pos=pos, amp=amp, sigma=sigma, noise=noise)

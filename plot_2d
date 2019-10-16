@@ -1,5 +1,5 @@
 #!/bin/bash
 dir=${1:-examples}
 python npy2fits.py "$dir"/*2d*.npy
-OMP_NUM_THREADS=1 enplot -vgr 4 --op 'm-m[:,None,None,0,0]' "$dir"/src*.fits
+OMP_NUM_THREADS=1 enplot -vgr 4 --op 'm-(m[:,None,None,0,0]+m[:,None,None,0,5]+m[:,None,None,5,0]+m[:,None,None,5,5])*0.25' "$dir"/src*.fits
 OMP_NUM_THREADS=1 enplot -vgr 4:0.1 --op 'm-nanmedian(m,(1,2))[:,None,None]' "$dir"/cmb*.fits
