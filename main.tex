@@ -321,7 +321,14 @@ from those correlations. This suggests the following approach:
 \begin{enumerate}
 	\item Make a point source free set of samples $d'$ from $d$ by smoothly in-painting the samples in $d$
 		that hit the bright sources, ideally using maximum likelihood in-painting, but the quality of the
-		in-painting only matters for the optimality of the method - bad in-painting will not cause a bias.
+		in-painting only matters for the optimality of the method - bad in-painting will not cause a bias\footnote{
+			This method splits the data into two parts, $d_\textrm{tot} = d_\textrm{inpaint} +
+			(d_\textrm{tot}-d_\textrm{inpaint})$, and maps the first term with a correlated noise model
+			and the last term with an uncorelated noise model. As long as both map-making methods
+			are unbiased, the result will be unbiased regardless of the exact value of $d_\textrm{inpaint}$.
+			In practice map-making with a correlated noise model can be biased due to model error
+			artifacts, as we have seen. But for reasonable, smooth in-painting methods this bias
+			will be completely negligible.}.
 	\item Make a maximum-likelihood map $\hat m'$ of the in-painted TOD using the full noise model.
 		\begin{align}
 		\hat m' &= M_{PN} d'
