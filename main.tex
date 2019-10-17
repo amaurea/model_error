@@ -170,7 +170,7 @@ sky jitter around slightly while varying in brightness. There is no room for thi
 eq.~\ref{eq:model} aside from the noise term $n$, so time-variable instrumental errors
 or variable point sources will lead to exactly the same sort of artifacts as sub-pixel errors do.
 
-\section{Workarounds}
+\section{Mitigation methods}
 The artifacts are ultimately caused by a combination of two factors:
 \begin{enumerate}
 	\item Multiple samples are mapped onto the same pixel, but don't agree on what the
@@ -407,7 +407,8 @@ in this area will not change that.
 
 \subsection{PGLS}
 Postprocessed Generalized Least Squares (PGLS) is a method developed for mapmaking with
-the infrared telescope Herschel. Unlike the other methods discussed here, this method
+high-S/N, high dynamic range data from the infrared telescope Herschel, where artifacts
+are much more pronounced than in CMB maps \citep{pgls-2012}. Unlike the other methods discussed here, this method
 does not try to prevent artifacts from forming, but instead attempts to measure and subtract
 them in a second pass of map-making. We can model a standard maximum-likelihood map built
 using eq.~\ref{eq:mapmaking} as in practice being $\hat m = m + a + q$ where $m$ is the
@@ -440,6 +441,43 @@ The median filter length is a compromise between the need to remove as much corr
 possible and to retain the artifacts themselves, and must be tuned to the instrument. The balance
 between artifacts and noise can also be adjusted by iterating the scheme, as indicated by the
 index $i$. Each iteration recovers more of the artifacts at the cost of letting through more noise.
+For the toy example I test in this paper I found a median filter width of 21 samples and 5 iterations
+to work well.
+
+\subsection{XGLS}
+The reason why local errors in areas of high signal end up leaking into the surroundings
+is ultimately that the noise model does not expect these areas to be more prone to high
+``noise'' than other regions. We can remedy this if we have an estimate of sub-pixel variance
+by addin this as an extra term $X$ in the noise model such that $N_\textrm{tot} = 
+N + X$, where $X_{ij} = \delta_{ij} \sigma_i^2$ and where $\sigma_i$ is the standard deviation
+of the sub-pixel signal variability in the pixel hit by sample $i$. Given this noise model one can
+produce an optimal, artifact-free map as $\hat m = M_{PN_\textrm{tot}} d$. This is the
+Pixel Noise Generalized Least Squares (XGLS) estimator \citep{xgls-2017}, and like PGLS it
+was developed for high S/N, high-dynamic range infrared data from the Herschel space telescope.
+
+In many ways this is the proper way to solve the problem - instead of more or
+less ad-hoc workarounds one tackes the problem at its root cause by telling the
+noise model about this extra source of variance. This elegance comes at a cost, though:
+\begin{enumerate}
+	\item One needs an estimate of the sub-pixel signal variance. If one knew the noise-free
+		signal $s$, then this could be estimated as $X = \textrm{diag}(PM_{PW}(s-PM_{PW}s)^2)$.
+		Here $\textrm{diag}(x)$ indicates the diagonal matrix with $x$ on the diagoanal, and
+		the squaring operation is performed sample-wise.
+		For simplicity this is what I do in the simulations in this paper, but for real data
+		where $s$ is unknown approximations are needed - see \citet{xgls-2017} for a discussion.
+	\item While the sample-diagonal $X$ and the (usually) Fourier-diagonal $N$ are both easy
+		to invert on their own, their sum is not diagonal in any simple basis and is therefore
+		much harder to invert, typically requiring an iterative method like conjugate gradients (CG)
+		Eq.~\ref{eq:mapmaking} itself is also usually solved with CG, resulting
+		in a solution process where a full sequence of CG steps for the noise matrix inversion
+		must be completed for every single CG step for the map. This makes XGLS dramatically
+		slower than any of the other methods I tested. This is confounded by the outer CG iteration's
+		sensitivity to inaccuracy in the inversion in the inner CG, necessitating a very strict
+		convergence criterion there, further slowing things down. \citet{xgls-2017} report that
+		they made this reasonably performant with some tuning, but still found the starting point
+		of the iteration to have large effect on the solution. This is an indicator of convergence
+		problems.
+\end{enumerate}
 
 \subsection{Summary of the methods}
 Table~\ref{tab:summary} shows a summary of the methods we will investigate. The ideal method would be
@@ -1225,6 +1263,43 @@ the CMB itself rather than a potentially very bright point source, it is never
 more than a small fraction of the CMB. A 3\%-level contamination in a small fraction
 of the sky is too small to matter in most circumstances, but to be safe one can
 always use source sub-sampling instead, which doesn't have this issue.
+
+\section{A note on polarization}
+The toy example used for illustration in this article does not include polarization
+in order to keep the code as simple and easy to understand as possible. That said,
+the algorithms described here are general and straightforward to extend to polarization
+(amounting mainly to a change in the implementation of the response matrix $P$), and
+with the exception of PGLS and XGLS have been implemented successfully in the Atacama
+Cosmology Telescope mapmaking framework \code{enlib}.
+
+That said, it can be useful to consider the what the polarized properties of model error
+artifacts are. The maximum-likelihood map $\hat m = M_{PN} d$ has a noise covariance
+matrix $C = (P^TN^{-1}P)^{-1}$, and sub-pixel variance in some pixel $i$ source artifacts
+$a_j \sim C^{\frac12}_{ij}$. That is: the artifacts leaking from a pixel are realizations
+of the noise covariance structure around that pixel. We can use this to predict whether
+artifacts will introduce significant I-to-P leakage. For a polarized map we can slice the
+covariance matrix $C$ into Stokes and pixel dimensions: $C_{\alpha\beta ij}$, where
+greek letters index Stokes parameters and latin one index pixels. Artifacts will have
+significant I-to-P leakage if $C_{IP}$ is not very small relative to the
+pure polarization components $C_{PP}$. Here $P$ is a stand-in for Q or U.
+
+How large should we expect these terms to be a priori? In telescopes that measure
+polarization via simultanous differencing, where pairs (or more) of detectors with different
+polarization orientation measure the same spot on the sky simultanously, atmospheric
+noise can be very effectively suppressed in polarization, leading to low $C_{IP}$.
+The same is the case for telescopes with (rapidly) rotating half-wave plates or other polarization
+modulators. This group of telescopes would have negligible I-to-P leakage in artifacts.
+P-to-P artifacts - that is artifacts in polarization maps thate are sourced by
+strong, local sources in polarization, like polarized point sources - would also be
+greatly reduced because less correlated noise in polarization results in a short
+correlation length and hence much more compact artifacts.
+
+On the other hand, telescopes that rely on combining non-simultanous measurements
+to separate the Stokes components would not suppress atmospheric noise in polarization.
+An example of this would be a telescope with non-polarization-sensitive detectors that
+uses a stepping half-wave plate for polarization separation. Here $C_{IP}$ would be
+large, and artifacts sourced by unpolarized sources could end up being almost 100\%
+polarized.
 
 \section{Summary}
 The model error mitigation strategies I have looked at can be grouped into two main classes:
